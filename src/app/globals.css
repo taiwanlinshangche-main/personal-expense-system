@@ -1,26 +1,232 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ===== Design System Tokens ===== */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  /* Backgrounds */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f4;
+  --bg-tertiary: #e7e5e4;
+
+  /* Text */
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-tertiary: #a8a29e;
+
+  /* Accent */
+  --accent: #1c1917;
+  --accent-soft: #f5f5f4;
+  --accent-hover: #292524;
+
+  /* Semantic */
+  --expense: #dc2626;
+  --income: #16a34a;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+
+  /* Borders & Surfaces */
+  --border: #e7e5e4;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+
+  /* Overlay */
+  --overlay: rgba(0, 0, 0, 0.4);
+
+  /* Button primary (always high-contrast) */
+  --btn-primary-bg: #1c1917;
+  --btn-primary-text: #ffffff;
+  --btn-primary-hover: #292524;
+
+  /* Balance card gradient */
+  --balance-gradient-start: #f0fdf4;
+  --balance-gradient-mid: #ecfdf5;
+  --balance-gradient-end: #f0fdf4;
+
+  /* Avatar gradient */
+  --avatar-gradient-start: #93c5fd;
+  --avatar-gradient-end: #3b82f6;
+  --avatar-icon-color: #1e3a5f;
+
+  /* Toast action */
+  --toast-action: #16a34a;
+
+  /* Bottom nav */
+  --nav-bg: #1a1a1a;
+  --nav-border: transparent;
+  --nav-inactive: rgba(255, 255, 255, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg-primary: #0c0a09;
+    --bg-secondary: #1c1917;
+    --bg-tertiary: #292524;
+
+    --text-primary: #fafaf9;
+    --text-secondary: #a8a29e;
+    --text-tertiary: #78716c;
+
+    --accent: #fafaf9;
+    --accent-soft: #1c1917;
+    --accent-hover: #e7e5e4;
+
+    --expense: #f87171;
+    --income: #4ade80;
+    --warning: #fbbf24;
+    --warning-soft: #5c3d10;
+
+    --border: #292524;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+
+    --overlay: rgba(0, 0, 0, 0.6);
+
+    --btn-primary-bg: #fafaf9;
+    --btn-primary-text: #0c0a09;
+    --btn-primary-hover: #e7e5e4;
+
+    --balance-gradient-start: #052e16;
+    --balance-gradient-mid: #064e3b;
+    --balance-gradient-end: #052e16;
+
+    --avatar-gradient-start: #1e3a5f;
+    --avatar-gradient-end: #2563eb;
+    --avatar-icon-color: #93c5fd;
+
+    --toast-action: #4ade80;
+
+    --nav-bg: #292524;
+    --nav-border: transparent;
+    --nav-inactive: rgba(255, 255, 255, 0.4);
   }
 }
 
+/* ===== Tailwind Theme Extension ===== */
+
+@theme inline {
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-tertiary: var(--bg-tertiary);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-hover: var(--accent-hover);
+
+  --color-expense: var(--expense);
+  --color-income: var(--income);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+
+  --color-border: var(--border);
+  --color-overlay: var(--overlay);
+
+  --color-nav-bg: var(--nav-bg);
+  --color-nav-border: var(--nav-border);
+  --color-nav-inactive: var(--nav-inactive);
+
+  --color-btn-primary-bg: var(--btn-primary-bg);
+  --color-btn-primary-text: var(--btn-primary-text);
+  --color-btn-primary-hover: var(--btn-primary-hover);
+  --color-toast-action: var(--toast-action);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ===== Base Styles ===== */
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: contain;
+}
+
+/* Tabular numbers for monetary values */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Skeleton Shimmer ===== */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* ===== Safe Area ===== */
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ===== Scrollbar (minimal) ===== */
+
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+/* ===== Bottom sheet overlay transition ===== */
+
+.overlay-enter {
+  opacity: 0;
+}
+
+.overlay-enter-active {
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+
+.overlay-exit {
+  opacity: 1;
+}
+
+.overlay-exit-active {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+/* ===== Date Input Styling ===== */
+
+input[type="date"] {
+  -webkit-appearance: none;
+  color-scheme: light dark;
+}
+
+/* ===== Hide number input spinners ===== */
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
 }
