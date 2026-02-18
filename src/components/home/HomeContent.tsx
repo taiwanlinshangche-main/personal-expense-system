@@ -82,12 +82,18 @@ export default function HomeContent() {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                   </button>
                 </div>
-                <AddTransactionForm
-                  accounts={accounts}
-                  categories={categories}
-                  onSubmit={onAddTransaction}
-                  isSubmitting={isSubmitting}
-                />
+                {accounts.length > 0 ? (
+                  <AddTransactionForm
+                    accounts={accounts}
+                    categories={categories}
+                    onSubmit={onAddTransaction}
+                    isSubmitting={isSubmitting}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="h-6 w-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                  </div>
+                )}
               </div>
             </motion.div>
           ) : (

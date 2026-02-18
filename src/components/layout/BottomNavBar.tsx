@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "motion/react";
 import type { TabKey } from "@/hooks/useAppData";
 
 interface BottomNavBarProps {
@@ -8,14 +7,8 @@ interface BottomNavBarProps {
   onTabChange: (tab: TabKey) => void;
   onFabClick: () => void;
   pendingCount?: number;
+  showAddForm?: boolean;
 }
-
-const TAB_ITEMS: { key: TabKey; label: string }[] = [
-  { key: "overview", label: "Overview" },
-  { key: "expense", label: "Expenses" },
-  { key: "insight", label: "Trends" },
-  { key: "claims", label: "Claims" },
-];
 
 function TabIcon({ tabKey }: { tabKey: TabKey }) {
   switch (tabKey) {
@@ -52,107 +45,81 @@ function TabIcon({ tabKey }: { tabKey: TabKey }) {
   }
 }
 
-/* Bar height = 56px, FAB floats 8px above the bar top edge */
 const BAR_H = 56;
-const FAB_SIZE = 56;
-const FAB_GAP = -14; /* FAB overlaps into the navbar notch */
 
-export default function BottomNavBar({ activeTab, onTabChange, onFabClick, pendingCount = 0 }: BottomNavBarProps) {
-  const leftTabs = TAB_ITEMS.slice(0, 2);
-  const rightTabs = TAB_ITEMS.slice(2);
-
-  /* Total height needed: bar + notch overhang area for FAB */
-  const notchOverhang = FAB_SIZE / 2 + FAB_GAP;
-
+export default function BottomNavBar({ activeTab, onTabChange, onFabClick, pendingCount = 0, showAddForm = false }: BottomNavBarProps) {
   return (
     <div
       className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-40"
-      style={{ height: BAR_H + notchOverhang }}
+      style={{ height: BAR_H }}
       role="navigation"
     >
-      {/* SVG navbar background with curved notch — sits at the bottom */}
-      <svg
-        className="absolute bottom-0 left-0 w-full"
-        style={{ height: BAR_H }}
-        viewBox={`0 0 400 ${BAR_H}`}
-        preserveAspectRatio="none"
-      >
-        <path
-          d={`M0,0 L158,0 C164,0 168,0 172,6 C178,14 184,${BAR_H / 2} 200,${BAR_H / 2} C216,${BAR_H / 2} 222,14 228,6 C232,0 236,0 242,0 L400,0 L400,${BAR_H} L0,${BAR_H} Z`}
-          fill="var(--nav-bg)"
-        />
-      </svg>
+      {/* Flat background */}
+      <div className="absolute inset-0 bg-nav-bg" />
 
-      {/* Tab icons — centered vertically within the bar */}
-      <div
-        className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4"
-        style={{ height: BAR_H }}
-      >
-        {/* Left tabs */}
-        <div className="flex flex-1 justify-around">
-          {leftTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => onTabChange(tab.key)}
-              className="flex items-center justify-center w-12 h-12 transition-opacity duration-200 text-text-primary"
-              style={{ opacity: activeTab === tab.key ? 1 : 0.3 }}
-              aria-label={tab.label}
-              aria-current={activeTab === tab.key ? "page" : undefined}
-            >
-              <TabIcon tabKey={tab.key} />
-            </button>
-          ))}
-        </div>
+      {/* 5-icon row */}
+      <div className="relative flex items-center justify-around h-full px-2">
+        {/* Overview */}
+        <button
+          onClick={() => onTabChange("overview")}
+          className="flex items-center justify-center w-12 h-12 transition-opacity duration-200 text-text-primary"
+          style={{ opacity: !showAddForm && activeTab === "overview" ? 1 : 0.3 }}
+          aria-label="Overview"
+          aria-current={activeTab === "overview" ? "page" : undefined}
+        >
+          <TabIcon tabKey="overview" />
+        </button>
 
-        {/* Spacer for FAB */}
-        <div style={{ width: 80 }} />
+        {/* Expenses */}
+        <button
+          onClick={() => onTabChange("expense")}
+          className="flex items-center justify-center w-12 h-12 transition-opacity duration-200 text-text-primary"
+          style={{ opacity: !showAddForm && activeTab === "expense" ? 1 : 0.3 }}
+          aria-label="Expenses"
+          aria-current={activeTab === "expense" ? "page" : undefined}
+        >
+          <TabIcon tabKey="expense" />
+        </button>
 
-        {/* Right tabs */}
-        <div className="flex flex-1 justify-around">
-          {rightTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => onTabChange(tab.key)}
-              className="relative flex items-center justify-center w-12 h-12 transition-opacity duration-200 text-text-primary"
-              style={{ opacity: activeTab === tab.key ? 1 : 0.3 }}
-              aria-label={tab.label}
-              aria-current={activeTab === tab.key ? "page" : undefined}
-            >
-              <TabIcon tabKey={tab.key} />
-              {tab.key === "claims" && pendingCount > 0 && (
-                <span className="absolute top-0.5 right-0 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-expense px-1 text-[9px] font-bold text-white">
-                  {pendingCount > 99 ? "99+" : pendingCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        {/* Center + button */}
+        <button
+          onClick={onFabClick}
+          className="flex items-center justify-center w-12 h-12 transition-opacity duration-200 text-accent"
+          style={{ opacity: showAddForm ? 1 : 0.5 }}
+          aria-label="Add transaction"
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+        </button>
+
+        {/* Trends */}
+        <button
+          onClick={() => onTabChange("insight")}
+          className="flex items-center justify-center w-12 h-12 transition-opacity duration-200 text-text-primary"
+          style={{ opacity: !showAddForm && activeTab === "insight" ? 1 : 0.3 }}
+          aria-label="Trends"
+          aria-current={activeTab === "insight" ? "page" : undefined}
+        >
+          <TabIcon tabKey="insight" />
+        </button>
+
+        {/* Claims */}
+        <button
+          onClick={() => onTabChange("claims")}
+          className="relative flex items-center justify-center w-12 h-12 transition-opacity duration-200 text-text-primary"
+          style={{ opacity: !showAddForm && activeTab === "claims" ? 1 : 0.3 }}
+          aria-label="Claims"
+          aria-current={activeTab === "claims" ? "page" : undefined}
+        >
+          <TabIcon tabKey="claims" />
+          {pendingCount > 0 && (
+            <span className="absolute top-0.5 right-0 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-expense px-1 text-[9px] font-bold text-white">
+              {pendingCount > 99 ? "99+" : pendingCount}
+            </span>
+          )}
+        </button>
       </div>
-
-      {/* FAB — absolutely positioned, floating above the bar */}
-      <motion.button
-        onClick={onFabClick}
-        whileTap={{ scale: 0.88, filter: "brightness(1.2)" }}
-        transition={{ type: "spring", stiffness: 400, damping: 20 }}
-        className="fab-gradient fab-glow absolute left-1/2 -translate-x-1/2 flex items-center justify-center rounded-full shadow-lg focus:outline-none"
-        style={{
-          width: FAB_SIZE,
-          height: FAB_SIZE,
-          bottom: BAR_H + FAB_GAP,
-          background: "linear-gradient(135deg, #7dd3fc, #38bdf8, #0ea5e9, #38bdf8, #7dd3fc, #0ea5e9)",
-          backgroundSize: "300% 300%",
-          animation: "gradient-flow 4s ease infinite",
-        }}
-        aria-label="Add transaction"
-      >
-        <div
-          className="fab-glow absolute inset-0 rounded-full pointer-events-none"
-          style={{ animation: "glow-pulse 4s ease-in-out infinite" }}
-        />
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 4.5v15m7.5-7.5h-15" />
-        </svg>
-      </motion.button>
 
       {/* Safe area padding for iPhone home indicator */}
       <div className="absolute bottom-0 left-0 right-0 bg-nav-bg pb-safe" style={{ zIndex: -1 }} />

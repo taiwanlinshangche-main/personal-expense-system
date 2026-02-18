@@ -462,6 +462,7 @@ export default function AppShell({ children }: AppShellProps) {
 
         <BottomNavBar
           activeTab={activeTab}
+          showAddForm={showAddForm}
           onTabChange={(tab) => {
             setShowAddForm(false);
             setActiveTab(tab);
