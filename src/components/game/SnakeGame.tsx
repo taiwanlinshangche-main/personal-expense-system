@@ -5,16 +5,67 @@ import { motion, AnimatePresence } from "motion/react";
 
 type Direction = "UP" | "DOWN" | "LEFT" | "RIGHT";
 type Point = { x: number; y: number };
+type Food = { x: number; y: number; type: "normal" | "bonus" };
 
 const GRID = 20;
 const TICK_MS = 120;
 
-function randomFood(snake: Point[]): Point {
+function randomPos(occupied: Point[]): Point {
   let p: Point;
   do {
     p = { x: Math.floor(Math.random() * GRID), y: Math.floor(Math.random() * GRID) };
-  } while (snake.some((s) => s.x === p.x && s.y === p.y));
+  } while (occupied.some((o) => o.x === p.x && o.y === p.y));
   return p;
+}
+
+function spawnFoods(snake: Point[]): Food[] {
+  const all: Point[] = [...snake];
+  const foods: Food[] = [];
+  // 2 normal (red) + 1 bonus (yellow)
+  for (let i = 0; i < 2; i++) {
+    const p = randomPos([...all, ...foods]);
+    foods.push({ ...p, type: "normal" });
+  }
+  const bp = randomPos([...all, ...foods]);
+  foods.push({ ...bp, type: "bonus" });
+  return foods;
+}
+
+function respawnOne(type: "normal" | "bonus", snake: Point[], otherFoods: Food[]): Food {
+  const occupied: Point[] = [...snake, ...otherFoods];
+  const p = randomPos(occupied);
+  return { ...p, type };
+}
+
+// Synthesized SFX via Web Audio API
+function playEatSound(bonus: boolean) {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (bonus) {
+      // Rising arpeggio for bonus
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(520, ctx.currentTime);
+      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.06);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.25);
+    } else {
+      // Short blip for normal
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(600, ctx.currentTime);
+      osc.frequency.setValueAtTime(800, ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.1);
+    }
+  } catch { /* Audio not available */ }
 }
 
 const OPPOSITE: Record<Direction, Direction> = {
@@ -31,12 +82,14 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
 
   const dirRef = useRef<Direction>("RIGHT");
   const nextDirRef = useRef<Direction>("RIGHT");
-  const snakeRef = useRef<Point[]>([
+  const initialSnake: Point[] = [
     { x: 5, y: 10 },
     { x: 4, y: 10 },
     { x: 3, y: 10 },
-  ]);
-  const foodRef = useRef<Point>(randomFood(snakeRef.current));
+  ];
+  const snakeRef = useRef<Point[]>(initialSnake);
+  const foodsRef = useRef<Food[]>(spawnFoods(initialSnake));
+  const growRef = useRef(0); // pending segments to grow
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
   const gameOverRef = useRef(false);
@@ -99,7 +152,6 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       const r = isHead ? cell * 0.45 : cell * 0.38;
 
       if (isHead) {
-        // Head glow
         const grd = ctx.createRadialGradient(
           seg.x * cell + cell / 2, seg.y * cell + cell / 2, 0,
           seg.x * cell + cell / 2, seg.y * cell + cell / 2, cell
@@ -119,23 +171,51 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       ctx.fill();
     });
 
-    // Food
-    const food = foodRef.current;
-    const fx = food.x * cell + cell / 2;
-    const fy = food.y * cell + cell / 2;
+    // Foods (3 total)
+    for (const food of foodsRef.current) {
+      const fx = food.x * cell + cell / 2;
+      const fy = food.y * cell + cell / 2;
+      const isBonus = food.type === "bonus";
 
-    // Food glow
-    const fgrd = ctx.createRadialGradient(fx, fy, 0, fx, fy, cell);
-    fgrd.addColorStop(0, "rgba(248,113,113,0.4)");
-    fgrd.addColorStop(1, "rgba(248,113,113,0)");
-    ctx.fillStyle = fgrd;
-    ctx.fillRect(fx - cell, fy - cell, cell * 2, cell * 2);
+      // Glow
+      const fgrd = ctx.createRadialGradient(fx, fy, 0, fx, fy, cell);
+      if (isBonus) {
+        fgrd.addColorStop(0, "rgba(250,204,21,0.45)");
+        fgrd.addColorStop(1, "rgba(250,204,21,0)");
+      } else {
+        fgrd.addColorStop(0, "rgba(248,113,113,0.4)");
+        fgrd.addColorStop(1, "rgba(248,113,113,0)");
+      }
+      ctx.fillStyle = fgrd;
+      ctx.fillRect(fx - cell, fy - cell, cell * 2, cell * 2);
 
-    ctx.beginPath();
-    ctx.arc(fx, fy, cell * 0.35, 0, Math.PI * 2);
-    ctx.fillStyle = "#f87171";
-    ctx.fill();
+      // Dot
+      ctx.beginPath();
+      ctx.arc(fx, fy, cell * (isBonus ? 0.4 : 0.35), 0, Math.PI * 2);
+      ctx.fillStyle = isBonus ? "#facc15" : "#f87171";
+      ctx.fill();
+
+      // Bonus star indicator
+      if (isBonus) {
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.font = `bold ${cell * 0.45}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("★", fx, fy + 1);
+      }
+    }
   }, [canvasSize]);
+
+  const endGame = useCallback(() => {
+    gameOverRef.current = true;
+    setGameOver(true);
+    if (tickRef.current) clearInterval(tickRef.current);
+    if (scoreRef.current > highScoreRef.current) {
+      highScoreRef.current = scoreRef.current;
+      setHighScore(scoreRef.current);
+      try { localStorage.setItem("snake_high_score", String(scoreRef.current)); } catch { /* */ }
+    }
+  }, []);
 
   const tick = useCallback(() => {
     if (gameOverRef.current) return;
@@ -153,54 +233,61 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
 
     // Wall collision
     if (head.x < 0 || head.x >= GRID || head.y < 0 || head.y >= GRID) {
-      gameOverRef.current = true;
-      setGameOver(true);
-      if (tickRef.current) clearInterval(tickRef.current);
-      if (scoreRef.current > highScoreRef.current) {
-        highScoreRef.current = scoreRef.current;
-        setHighScore(scoreRef.current);
-        try { localStorage.setItem("snake_high_score", String(scoreRef.current)); } catch { /* */ }
-      }
+      endGame();
       return;
     }
 
     // Self collision
     if (snake.some((s) => s.x === head.x && s.y === head.y)) {
-      gameOverRef.current = true;
-      setGameOver(true);
-      if (tickRef.current) clearInterval(tickRef.current);
-      if (scoreRef.current > highScoreRef.current) {
-        highScoreRef.current = scoreRef.current;
-        setHighScore(scoreRef.current);
-        try { localStorage.setItem("snake_high_score", String(scoreRef.current)); } catch { /* */ }
-      }
+      endGame();
       return;
     }
 
     snake.unshift(head);
 
-    // Eat food
-    if (head.x === foodRef.current.x && head.y === foodRef.current.y) {
-      scoreRef.current += 1;
+    // Check food collision
+    const eatenIdx = foodsRef.current.findIndex((f) => f.x === head.x && f.y === head.y);
+    if (eatenIdx !== -1) {
+      const eaten = foodsRef.current[eatenIdx];
+      const isBonus = eaten.type === "bonus";
+      const points = isBonus ? 5 : 1;
+      const growAmount = isBonus ? 5 : 1;
+
+      scoreRef.current += points;
       setScore(scoreRef.current);
-      foodRef.current = randomFood(snake);
+      playEatSound(isBonus);
+
+      // Queue growth (1 segment already added by not popping, rest via growRef)
+      growRef.current += growAmount - 1;
+
+      // Respawn that food
+      const otherFoods = foodsRef.current.filter((_, i) => i !== eatenIdx);
+      const newFood = respawnOne(eaten.type, snake, otherFoods);
+      foodsRef.current = [...otherFoods, newFood];
     } else {
-      snake.pop();
+      // No food eaten — shrink tail (unless growing)
+      if (growRef.current > 0) {
+        growRef.current -= 1;
+      } else {
+        snake.pop();
+      }
     }
 
     snakeRef.current = snake;
     draw();
-  }, [draw]);
+  }, [draw, endGame]);
 
   const startGame = useCallback(() => {
-    snakeRef.current = [
+    const startSnake: Point[] = [
       { x: 5, y: 10 },
       { x: 4, y: 10 },
       { x: 3, y: 10 },
     ];
+    snakeRef.current = startSnake;
     dirRef.current = "RIGHT";
     nextDirRef.current = "RIGHT";
-    foodRef.current = randomFood(snakeRef.current);
+    foodsRef.current = spawnFoods(startSnake);
+    growRef.current = 0;
     scoreRef.current = 0;
     gameOverRef.current = false;
     setScore(0);
@@ -262,7 +349,7 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
-    if (Math.max(absDx, absDy) < 20) return; // Too short
+    if (Math.max(absDx, absDy) < 20) return;
 
     let newDir: Direction;
     if (absDx > absDy) {
