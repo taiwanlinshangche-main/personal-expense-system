@@ -55,7 +55,7 @@ function TabIcon({ tabKey }: { tabKey: TabKey }) {
 /* Bar height = 56px, FAB floats 8px above the bar top edge */
 const BAR_H = 56;
 const FAB_SIZE = 56;
-const FAB_GAP = 2; /* small gap between FAB bottom and bar top */
+const FAB_GAP = -14; /* FAB overlaps into the navbar notch */
 
 export default function BottomNavBar({ activeTab, onTabChange, onFabClick, pendingCount = 0 }: BottomNavBarProps) {
   const leftTabs = TAB_ITEMS.slice(0, 2);

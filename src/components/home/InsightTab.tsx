@@ -28,7 +28,7 @@ const COMPARISON_LABELS: Record<ViewMode, string> = {
 // Chart layout
 const SVG_W = 380;
 const SVG_H = 200;
-const CHART_L = 16;
+const CHART_L = 24;
 const CHART_R = SVG_W - 16;
 const CHART_T = 24;
 const CHART_B = SVG_H - 24;
