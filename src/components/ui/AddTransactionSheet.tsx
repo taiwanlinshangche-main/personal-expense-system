@@ -5,6 +5,7 @@ import BottomSheet from "./BottomSheet";
 import CalendarPicker from "./CalendarPicker";
 import { cn } from "@/lib/cn";
 import { getTodayString } from "@/lib/format";
+import { playClick } from "@/lib/sfx";
 import type { AccountWithBalance, Category } from "@/types/database";
 
 interface AddTransactionSheetProps {
@@ -49,6 +50,7 @@ export default function AddTransactionSheet({
 
 // Account groups for selector
 interface AccountGroup {
+  key: string;
   label: string;
   accounts: AccountWithBalance[];
 }
@@ -71,18 +73,65 @@ function AddTransactionForm({
     return accounts[0]?.id || "";
   })();
 
+  // Build dynamic account groups from the `group` field
+  const groups = useMemo((): AccountGroup[] => {
+    const groupMap = new Map<string, AccountWithBalance[]>();
+    const soloAccounts: AccountWithBalance[] = [];
+
+    for (const acc of accounts) {
+      if (acc.group) {
+        const existing = groupMap.get(acc.group) || [];
+        existing.push(acc);
+        groupMap.set(acc.group, existing);
+      } else {
+        soloAccounts.push(acc);
+      }
+    }
+
+    const result: AccountGroup[] = [];
+
+    // Solo accounts each get their own group
+    for (const acc of soloAccounts) {
+      result.push({
+        key: acc.id,
+        label: acc.name,
+        accounts: [acc],
+      });
+    }
+
+    // Grouped accounts share a group button
+    for (const [groupName, accs] of groupMap) {
+      // Use first account's name prefix as label (e.g., "SinoPac ATM" → "SinoPac")
+      const label =
+        accs[0].name.split(" ")[0] ||
+        groupName.charAt(0).toUpperCase() + groupName.slice(1);
+      result.push({ key: groupName, label, accounts: accs });
+    }
+
+    // Sort by sort_order of the first account in each group
+    result.sort(
+      (a, b) => (a.accounts[0]?.sort_order ?? 0) - (b.accounts[0]?.sort_order ?? 0)
+    );
+
+    return result;
+  }, [accounts]);
+
+  // Find which group the default account belongs to
+  const defaultGroup = useMemo(() => {
+    for (const g of groups) {
+      if (g.accounts.some((a) => a.id === defaultAccountId)) return g.key;
+    }
+    return groups[0]?.key || "";
+  }, [groups, defaultAccountId]);
+
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
-  const [selectedGroup, setSelectedGroup] = useState<string>(() => {
-    const defaultAcc = accounts.find((a) => a.id === defaultAccountId);
-    if (defaultAcc?.group === "sinopac") return "sinopac";
-    if (defaultAcc?.name === "Taiwan Bank") return "taiwan";
-    return "cash";
-  });
-  const [sinopacSub, setSinopacSub] = useState<"transfer" | "credit">(() => {
-    const defaultAcc = accounts.find((a) => a.id === defaultAccountId);
-    if (defaultAcc?.name?.includes("Card")) return "credit";
-    return "transfer";
+  const [selectedGroupKey, setSelectedGroupKey] = useState(defaultGroup);
+  const [selectedSubIdx, setSelectedSubIdx] = useState(() => {
+    const group = groups.find((g) => g.key === defaultGroup);
+    if (!group) return 0;
+    const idx = group.accounts.findIndex((a) => a.id === defaultAccountId);
+    return idx >= 0 ? idx : 0;
   });
   const [date, setDate] = useState(getTodayString());
   const [showCalendar, setShowCalendar] = useState(false);
@@ -90,32 +139,9 @@ function AddTransactionForm({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isCompanyAdvance, setIsCompanyAdvance] = useState(false);
 
-  // Build account groups
-  const groups = useMemo((): AccountGroup[] => {
-    const cash = accounts.filter((a) => a.name === "Cash");
-    const sinopac = accounts.filter((a) => a.group === "sinopac");
-    const taiwan = accounts.filter((a) => a.name === "Taiwan Bank");
-    return [
-      { label: "Cash", accounts: cash },
-      { label: "SinoPac", accounts: sinopac },
-      { label: "Taiwan Bank", accounts: taiwan },
-    ].filter((g) => g.accounts.length > 0);
-  }, [accounts]);
-
-  // Resolve final account_id
-  const resolvedAccountId = useMemo(() => {
-    if (selectedGroup === "sinopac") {
-      const sinopacAccounts = accounts.filter((a) => a.group === "sinopac");
-      if (sinopacSub === "credit") {
-        return sinopacAccounts.find((a) => a.name.includes("Card"))?.id || sinopacAccounts[0]?.id || "";
-      }
-      return sinopacAccounts.find((a) => a.name.includes("ATM"))?.id || sinopacAccounts[0]?.id || "";
-    }
-    if (selectedGroup === "taiwan") {
-      return accounts.find((a) => a.name === "Taiwan Bank")?.id || "";
-    }
-    return accounts.find((a) => a.name === "Cash")?.id || "";
-  }, [accounts, selectedGroup, sinopacSub]);
+  // Resolve final account_id from group + sub-selection
+  const activeGroup = groups.find((g) => g.key === selectedGroupKey);
+  const resolvedAccountId = activeGroup?.accounts[selectedSubIdx]?.id || activeGroup?.accounts[0]?.id || accounts[0]?.id || "";
 
   const canSubmit = amount && parseFloat(amount) > 0 && resolvedAccountId && !isSubmitting;
 
@@ -193,61 +219,55 @@ function AddTransactionForm({
       </div>
 
       {/* Account Group Selector */}
-      <div className="mt-4">
-        <label className="text-sm font-medium text-text-secondary">Account</label>
-        <div className="mt-2 flex gap-2">
-          {groups.map((group) => {
-            const groupKey =
-              group.label === "Cash"
-                ? "cash"
-                : group.label === "SinoPac"
-                ? "sinopac"
-                : "taiwan";
-            return (
+      {groups.length > 0 && (
+        <div className="mt-4">
+          <label className="text-sm font-medium text-text-secondary">Account</label>
+          <div className="mt-2 flex gap-2">
+            {groups.map((group) => (
               <button
-                key={groupKey}
-                onClick={() => setSelectedGroup(groupKey)}
+                key={group.key}
+                onClick={() => {
+                  setSelectedGroupKey(group.key);
+                  setSelectedSubIdx(0);
+                }}
                 className={cn(
                   "flex-1 rounded-xl py-2.5 text-sm font-medium transition-all duration-150 border",
-                  selectedGroup === groupKey
+                  selectedGroupKey === group.key
                     ? "border-accent bg-accent/10 text-text-primary"
                     : "border-border bg-bg-secondary text-text-secondary"
                 )}
               >
                 {group.label}
               </button>
-            );
-          })}
-        </div>
-
-        {/* SinoPac sub-account toggle */}
-        {selectedGroup === "sinopac" && (
-          <div className="mt-2 flex rounded-xl bg-bg-tertiary p-1">
-            <button
-              onClick={() => setSinopacSub("transfer")}
-              className={cn(
-                "flex-1 rounded-lg py-2 text-[13px] font-medium transition-all duration-150",
-                sinopacSub === "transfer"
-                  ? "bg-bg-primary text-text-primary shadow-sm"
-                  : "text-text-secondary"
-              )}
-            >
-              ATM
-            </button>
-            <button
-              onClick={() => setSinopacSub("credit")}
-              className={cn(
-                "flex-1 rounded-lg py-2 text-[13px] font-medium transition-all duration-150",
-                sinopacSub === "credit"
-                  ? "bg-bg-primary text-text-primary shadow-sm"
-                  : "text-text-secondary"
-              )}
-            >
-              Card
-            </button>
+            ))}
           </div>
-        )}
-      </div>
+
+          {/* Sub-account toggle (for groups with multiple accounts) */}
+          {activeGroup && activeGroup.accounts.length > 1 && (
+            <div className="mt-2 flex rounded-xl bg-bg-tertiary p-1">
+              {activeGroup.accounts.map((acc, idx) => {
+                // Show short name: strip group prefix if present
+                const shortName =
+                  acc.name.replace(activeGroup.label, "").trim() || acc.name;
+                return (
+                  <button
+                    key={acc.id}
+                    onClick={() => setSelectedSubIdx(idx)}
+                    className={cn(
+                      "flex-1 rounded-lg py-2 text-[13px] font-medium transition-all duration-150",
+                      selectedSubIdx === idx
+                        ? "bg-bg-primary text-text-primary shadow-sm"
+                        : "text-text-secondary"
+                    )}
+                  >
+                    {shortName}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Category */}
       {categories.length > 0 && (
@@ -331,7 +351,10 @@ function AddTransactionForm({
             <input
               type="checkbox"
               checked={isCompanyAdvance}
-              onChange={(e) => setIsCompanyAdvance(e.target.checked)}
+              onChange={(e) => {
+                playClick();
+                setIsCompanyAdvance(e.target.checked);
+              }}
               className="sr-only"
             />
             <div

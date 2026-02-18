@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { useAppData } from "@/hooks/useAppData";
 import { formatCurrency, formatSignedCurrency } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { playClick } from "@/lib/sfx";
 
 type ViewMode = "week" | "month" | "year";
 
@@ -50,8 +51,9 @@ function ChevronRight() {
 }
 
 export default function InsightTab() {
-  const { accounts, transactions } = useAppData();
+  const { accounts, transactions, categories } = useAppData();
   const [selectedAccountId, setSelectedAccountId] = useState("all");
+  const [selectedCategoryName, setSelectedCategoryName] = useState("all");
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [selectedPointIdx, setSelectedPointIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -99,16 +101,21 @@ export default function InsightTab() {
 
   // Get relevant transactions (sorted by date)
   const relevantTxs = useMemo(() => {
-    const txs =
+    let txs =
       selectedAccountId === "all"
         ? [...transactions]
         : transactions.filter((tx) => tx.account_id === selectedAccountId);
+
+    if (selectedCategoryName !== "all") {
+      txs = txs.filter((tx) => tx.category === selectedCategoryName);
+    }
+
     return txs.sort(
       (a, b) =>
         new Date(a.date + "T00:00:00").getTime() -
         new Date(b.date + "T00:00:00").getTime()
     );
-  }, [transactions, selectedAccountId]);
+  }, [transactions, selectedAccountId, selectedCategoryName]);
 
   // Initial balance for selected account(s)
   const initialBalance = useMemo(() => {
@@ -310,7 +317,7 @@ export default function InsightTab() {
       .filter((tx) => tx.amount < 0)
       .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
-    return { income, spending };
+    return { income, spending, periodTxs };
   }, [
     relevantTxs,
     viewMode,
@@ -318,6 +325,29 @@ export default function InsightTab() {
     selectedMonthYear,
     selectedYear,
   ]);
+
+  // Category spending breakdown for the current period
+  const categoryBreakdown = useMemo(() => {
+    const expenseTxs = periodStats.periodTxs.filter((tx) => tx.amount < 0);
+    const catMap = new Map<string, number>();
+
+    for (const tx of expenseTxs) {
+      const cat = tx.category || "Other";
+      catMap.set(cat, (catMap.get(cat) || 0) + Math.abs(tx.amount));
+    }
+
+    // Build array with emoji from categories list
+    const catEmojiMap = new Map(categories.map((c) => [c.name, c.emoji]));
+
+    return Array.from(catMap.entries())
+      .map(([name, amount]) => ({
+        name,
+        emoji: catEmojiMap.get(name) || "",
+        amount,
+        percent: periodStats.spending > 0 ? (amount / periodStats.spending) * 100 : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [periodStats, categories]);
 
   // SVG geometry
   const { linePath, areaPath, coords, xLabels } = useMemo(() => {
@@ -428,6 +458,10 @@ export default function InsightTab() {
     setSelectedAccountId(id);
     setSelectedPointIdx(null);
   };
+  const changeCategory = (name: string) => {
+    setSelectedCategoryName(name);
+    setSelectedPointIdx(null);
+  };
 
   // Tooltip
   const tooltipPoint =
@@ -490,6 +524,37 @@ export default function InsightTab() {
           ))}
         </div>
       </div>
+
+      {/* Category filter chips */}
+      {categories.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide mt-2 pb-1">
+          <button
+            onClick={() => changeCategory("all")}
+            className={cn(
+              "shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all",
+              selectedCategoryName === "all"
+                ? "bg-text-primary text-bg-primary"
+                : "bg-bg-secondary text-text-secondary"
+            )}
+          >
+            All Categories
+          </button>
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => changeCategory(cat.name)}
+              className={cn(
+                "shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all",
+                selectedCategoryName === cat.name
+                  ? "bg-text-primary text-bg-primary"
+                  : "bg-bg-secondary text-text-secondary"
+              )}
+            >
+              {cat.emoji && `${cat.emoji} `}{cat.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Balance + Comparison */}
       <motion.div
@@ -585,10 +650,15 @@ export default function InsightTab() {
           viewBox={`0 0 ${SVG_W} ${SVG_H}`}
           className="w-full"
           preserveAspectRatio="xMidYMid meet"
-          onClick={(e) => handleChartTap(e.clientX)}
+          onClick={(e) => {
+            playClick();
+            handleChartTap(e.clientX);
+          }}
           onTouchEnd={(e) => {
-            if (e.changedTouches[0])
+            if (e.changedTouches[0]) {
+              playClick();
               handleChartTap(e.changedTouches[0].clientX);
+            }
           }}
           style={{ cursor: "pointer" }}
         >
@@ -706,6 +776,44 @@ export default function InsightTab() {
           </button>
         )}
       </div>
+
+      {/* Category Spending Breakdown */}
+      {categoryBreakdown.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-sm font-medium text-text-secondary mb-3">
+            Spending by Category
+          </h3>
+          <div className="space-y-2">
+            {categoryBreakdown.map((cat) => (
+              <div key={cat.name} className="rounded-xl bg-bg-secondary px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    {cat.emoji && <span className="text-base">{cat.emoji}</span>}
+                    <span className="text-sm font-medium text-text-primary">
+                      {cat.name}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-semibold tabular-nums text-text-primary">
+                      {formatCurrency(cat.amount)}
+                    </span>
+                    <span className="ml-2 text-xs tabular-nums text-text-tertiary">
+                      {cat.percent.toFixed(0)}%
+                    </span>
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div className="mt-2 h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-expense/60 transition-all duration-300"
+                    style={{ width: `${cat.percent}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

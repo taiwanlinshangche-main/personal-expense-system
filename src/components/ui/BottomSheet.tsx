@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/cn";
+import { playClick } from "@/lib/sfx";
 
 interface BottomSheetProps {
   open: boolean;
@@ -44,7 +45,10 @@ export default function BottomSheet({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="absolute inset-0 bg-overlay"
-            onClick={onClose}
+            onClick={() => {
+              playClick();
+              onClose();
+            }}
             aria-hidden="true"
           />
 

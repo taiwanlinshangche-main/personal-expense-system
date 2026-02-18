@@ -13,6 +13,7 @@ import {
   trackAddAccountSubmit,
   trackReimbursementStatusChange,
 } from "@/lib/analytics";
+import { playClick, playSuccess } from "@/lib/sfx";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -30,7 +31,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [categories, setCategories] = useState<Category[]>([]);
 
   // Fetch data from API on mount
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (attemptSeed = true) => {
     try {
       const [summaryRes, txRes, catRes] = await Promise.all([
         fetch("/api/summary"),
@@ -38,9 +39,13 @@ export default function AppShell({ children }: AppShellProps) {
         fetch("/api/categories"),
       ]);
 
+      let accts: AccountWithBalance[] = [];
+      let cats: Category[] = [];
+
       if (summaryRes.ok) {
         const summary = await summaryRes.json();
-        setAccounts(summary.accounts || []);
+        accts = summary.accounts || [];
+        setAccounts(accts);
       }
 
       if (txRes.ok) {
@@ -50,7 +55,20 @@ export default function AppShell({ children }: AppShellProps) {
 
       if (catRes.ok) {
         const catData = await catRes.json();
-        setCategories(catData || []);
+        cats = catData || [];
+        setCategories(cats);
+      }
+
+      // Auto-seed default accounts & categories on first load
+      if (attemptSeed && accts.length === 0) {
+        try {
+          await fetch("/api/seed", { method: "POST" });
+        } catch {
+          // Seed request failed, continue
+        }
+        // Always refetch — seed may have partially succeeded (e.g. accounts created)
+        await fetchData(false);
+        return;
       }
     } catch (err) {
       console.error("Failed to fetch data:", err);
@@ -62,6 +80,28 @@ export default function AppShell({ children }: AppShellProps) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Global SFX: play click sound for all interactive elements
+  useEffect(() => {
+    function handleGlobalClick(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      const interactive = target.closest(
+        'button, a, [role="button"], [role="link"]'
+      );
+      if (!interactive) return;
+      if (
+        interactive instanceof HTMLButtonElement &&
+        interactive.disabled
+      )
+        return;
+      playClick();
+    }
+    document.addEventListener("click", handleGlobalClick, { capture: true });
+    return () =>
+      document.removeEventListener("click", handleGlobalClick, {
+        capture: true,
+      });
+  }, []);
 
   const pendingCount = transactions.filter(
     (t) => t.is_company_advance && t.reimbursement_status === "pending"
@@ -102,6 +142,7 @@ export default function AppShell({ children }: AppShellProps) {
         }
 
         const newTx: TransactionWithAccount = await res.json();
+        playSuccess();
 
         trackAddTransactionSubmit(
           data.amount,
@@ -217,6 +258,65 @@ export default function AppShell({ children }: AppShellProps) {
     [transactions]
   );
 
+  const handleDeleteTransaction = useCallback(
+    async (txId: string) => {
+      const tx = transactions.find((t) => t.id === txId);
+      if (!tx) return;
+
+      // Optimistic removal
+      setTransactions((prev) => prev.filter((t) => t.id !== txId));
+      setAccounts((prev) =>
+        prev.map((a) => {
+          if (a.id !== tx.account_id) return a;
+          return {
+            ...a,
+            current_balance: a.current_balance - tx.amount,
+            month_spending:
+              tx.amount < 0
+                ? a.month_spending - Math.abs(tx.amount)
+                : a.month_spending,
+          };
+        })
+      );
+
+      try {
+        const res = await fetch(`/api/transactions/${txId}`, {
+          method: "DELETE",
+        });
+
+        if (!res.ok) {
+          // Revert on failure
+          setTransactions((prev) => [...prev, tx].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          ));
+          setAccounts((prev) =>
+            prev.map((a) => {
+              if (a.id !== tx.account_id) return a;
+              return {
+                ...a,
+                current_balance: a.current_balance + tx.amount,
+                month_spending:
+                  tx.amount < 0
+                    ? a.month_spending + Math.abs(tx.amount)
+                    : a.month_spending,
+              };
+            })
+          );
+          showToast({ message: "Failed to delete transaction" });
+          return;
+        }
+
+        showToast({ message: "Transaction deleted" });
+      } catch {
+        // Revert on error
+        setTransactions((prev) => [...prev, tx].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
+      }
+    },
+    [transactions]
+  );
+
   const handleAddCategory = useCallback(
     async (data: { name: string; emoji: string }) => {
       const res = await fetch("/api/categories", {
@@ -267,6 +367,7 @@ export default function AppShell({ children }: AppShellProps) {
     onAddTransaction: handleAddTransaction,
     onAddCategory: handleAddCategory,
     onDeleteCategory: handleDeleteCategory,
+    onDeleteTransaction: handleDeleteTransaction,
     onStatusChange: handleStatusChange,
   };
 
