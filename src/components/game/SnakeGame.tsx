@@ -116,8 +116,8 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     function resize() {
       if (containerRef.current) {
-        const w = containerRef.current.clientWidth;
-        setCanvasSize(Math.min(w, 400));
+        const w = containerRef.current.clientWidth - 32; // subtract px-4 padding (16*2)
+        setCanvasSize(Math.min(w, 380));
       }
     }
     resize();
@@ -436,43 +436,43 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* D-Pad controls */}
-      <div className="mt-6 flex flex-col items-center gap-2">
+      <div className="mt-5 flex flex-col items-center gap-3">
         <button
           onPointerDown={() => { if (dirRef.current !== "DOWN") nextDirRef.current = "UP"; }}
-          className="flex items-center justify-center w-14 h-14 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+          className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
           aria-label="Up"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="m18 15-6-6-6 6" />
           </svg>
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onPointerDown={() => { if (dirRef.current !== "RIGHT") nextDirRef.current = "LEFT"; }}
-            className="flex items-center justify-center w-14 h-14 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+            className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
             aria-label="Left"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
-          <div className="w-14 h-14" />
+          <div className="w-20 h-20" />
           <button
             onPointerDown={() => { if (dirRef.current !== "LEFT") nextDirRef.current = "RIGHT"; }}
-            className="flex items-center justify-center w-14 h-14 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+            className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
             aria-label="Right"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m9 18 6-6-6-6" />
             </svg>
           </button>
         </div>
         <button
           onPointerDown={() => { if (dirRef.current !== "UP") nextDirRef.current = "DOWN"; }}
-          className="flex items-center justify-center w-14 h-14 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+          className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
           aria-label="Down"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="m6 9 6 6 6-6" />
           </svg>
         </button>
