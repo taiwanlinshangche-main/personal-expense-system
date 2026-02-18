@@ -95,6 +95,25 @@ export default function AppShell({ children }: AppShellProps) {
     fetchData();
   }, [fetchData]);
 
+  // Auto-open AddTransactionSheet after initial load
+  const hasAutoOpened = useRef(false);
+  useEffect(() => {
+    if (isLoading || hasAutoOpened.current || accounts.length === 0) return;
+    hasAutoOpened.current = true;
+
+    // Default to SinoPac Credit Card account
+    const sinopacCredit = accounts.find(
+      (a) => /sinopac/i.test(a.name) && /credit|信用/i.test(a.name)
+    ) ?? accounts.find((a) => /sinopac|永豐/i.test(a.name));
+    if (sinopacCredit) {
+      try { localStorage.setItem("last_account_id", sinopacCredit.id); } catch { /* */ }
+    }
+
+    addTxStartTime.current = Date.now();
+    setTxSheetResetKey((k) => k + 1);
+    setShowAddTransaction(true);
+  }, [isLoading, accounts]);
+
   // Global SFX: play click sound for all interactive elements
   useEffect(() => {
     function handleGlobalClick(e: MouseEvent) {

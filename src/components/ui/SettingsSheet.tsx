@@ -66,6 +66,7 @@ export default function SettingsSheet({
   };
 
   return (
+    <>
     <BottomSheet open={open} onClose={onClose} title="Settings">
       {/* Workspace Section */}
       {workspaces.length > 0 && (
@@ -235,10 +236,11 @@ export default function SettingsSheet({
           </svg>
         </button>
       </div>
-
-      <AnimatePresence>
-        {showGame && <SnakeGame onClose={() => setShowGame(false)} />}
-      </AnimatePresence>
     </BottomSheet>
+
+    <AnimatePresence>
+      {showGame && <SnakeGame onClose={() => setShowGame(false)} />}
+    </AnimatePresence>
+    </>
   );
 }
