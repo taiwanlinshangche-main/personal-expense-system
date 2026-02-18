@@ -9,7 +9,7 @@ type FoodType = "green" | "yellow" | "red";
 type Food = { x: number; y: number; type: FoodType };
 
 const GRID = 20;
-const TICK_MS = 120;
+const TICK_MS = 105; // slightly faster for snappier feel
 
 function randomPos(occupied: Point[]): Point {
   let p: Point;
@@ -30,7 +30,6 @@ const FOOD_COLORS: Record<FoodType, { fill: string; glowR: string; glowG: string
 
 function spawnFoods(snake: Point[]): Food[] {
   const foods: Food[] = [];
-  // 2 green + 2 yellow + 2 red = 6 total
   for (const type of FOOD_TYPES) {
     const p = randomPos([...snake, ...foods]);
     foods.push({ ...p, type });
@@ -55,7 +54,6 @@ function playEatSound(type: FoodType) {
     osc.type = "sine";
 
     if (type === "red") {
-      // Triumphant rising arpeggio
       osc.frequency.setValueAtTime(520, ctx.currentTime);
       osc.frequency.setValueAtTime(660, ctx.currentTime + 0.06);
       osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
@@ -65,7 +63,6 @@ function playEatSound(type: FoodType) {
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.3);
     } else if (type === "yellow") {
-      // Rising two-tone
       osc.frequency.setValueAtTime(520, ctx.currentTime);
       osc.frequency.setValueAtTime(780, ctx.currentTime + 0.06);
       gain.gain.setValueAtTime(0.13, ctx.currentTime);
@@ -73,7 +70,6 @@ function playEatSound(type: FoodType) {
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.18);
     } else {
-      // Short blip
       osc.frequency.setValueAtTime(600, ctx.currentTime);
       osc.frequency.setValueAtTime(800, ctx.currentTime + 0.04);
       gain.gain.setValueAtTime(0.12, ctx.currentTime);
@@ -82,6 +78,10 @@ function playEatSound(type: FoodType) {
       osc.stop(ctx.currentTime + 0.1);
     }
   } catch { /* Audio not available */ }
+}
+
+function tryVibrate() {
+  try { navigator.vibrate?.(8); } catch { /* */ }
 }
 
 const OPPOSITE: Record<Direction, Direction> = {
@@ -97,7 +97,8 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
   const [canvasSize, setCanvasSize] = useState(300);
 
   const dirRef = useRef<Direction>("RIGHT");
-  const nextDirRef = useRef<Direction>("RIGHT");
+  // Input queue — buffer up to 3 moves so rapid presses aren't lost
+  const inputQueue = useRef<Direction[]>([]);
   const initialSnake: Point[] = [
     { x: 5, y: 10 },
     { x: 4, y: 10 },
@@ -105,7 +106,7 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
   ];
   const snakeRef = useRef<Point[]>(initialSnake);
   const foodsRef = useRef<Food[]>(spawnFoods(initialSnake));
-  const growRef = useRef(0); // pending segments to grow
+  const growRef = useRef(0);
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
   const gameOverRef = useRef(false);
@@ -115,6 +116,19 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
   const [highScore, setHighScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
+
+  // Enqueue a direction — validates against the last queued (or current) direction
+  const enqueueDir = useCallback((newDir: Direction) => {
+    const queue = inputQueue.current;
+    // The "effective" direction is the last queued one, or current if queue is empty
+    const lastDir = queue.length > 0 ? queue[queue.length - 1] : dirRef.current;
+    // Don't reverse and don't duplicate
+    if (newDir === OPPOSITE[lastDir] || newDir === lastDir) return;
+    if (queue.length < 3) {
+      queue.push(newDir);
+      tryVibrate();
+    }
+  }, []);
 
   // Load high score
   useEffect(() => {
@@ -132,7 +146,7 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     function resize() {
       if (containerRef.current) {
-        const w = containerRef.current.clientWidth - 32; // subtract px-4 padding (16*2)
+        const w = containerRef.current.clientWidth - 32;
         setCanvasSize(Math.min(w, 380));
       }
     }
@@ -150,7 +164,7 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
     const cell = canvasSize / GRID;
     ctx.clearRect(0, 0, canvasSize, canvasSize);
 
-    // Background grid (subtle)
+    // Background grid
     ctx.fillStyle = "rgba(255,255,255,0.02)";
     for (let x = 0; x < GRID; x++) {
       for (let y = 0; y < GRID; y++) {
@@ -187,21 +201,19 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       ctx.fill();
     });
 
-    // Foods (6 total: 2 green, 2 yellow, 2 red)
+    // Foods
     for (const food of foodsRef.current) {
       const fx = food.x * cell + cell / 2;
       const fy = food.y * cell + cell / 2;
       const colors = FOOD_COLORS[food.type];
       const dotR = food.type === "red" ? 0.42 : food.type === "yellow" ? 0.38 : 0.35;
 
-      // Glow
       const fgrd = ctx.createRadialGradient(fx, fy, 0, fx, fy, cell);
       fgrd.addColorStop(0, colors.glowR);
       fgrd.addColorStop(1, colors.glowG);
       ctx.fillStyle = fgrd;
       ctx.fillRect(fx - cell, fy - cell, cell * 2, cell * 2);
 
-      // Dot
       ctx.beginPath();
       ctx.arc(fx, fy, cell * dotR, 0, Math.PI * 2);
       ctx.fillStyle = colors.fill;
@@ -223,7 +235,11 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
   const tick = useCallback(() => {
     if (gameOverRef.current) return;
 
-    dirRef.current = nextDirRef.current;
+    // Dequeue next direction from input buffer
+    if (inputQueue.current.length > 0) {
+      dirRef.current = inputQueue.current.shift()!;
+    }
+
     const snake = [...snakeRef.current];
     const head = { ...snake[0] };
 
@@ -234,13 +250,11 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       case "RIGHT": head.x += 1; break;
     }
 
-    // Wall collision
     if (head.x < 0 || head.x >= GRID || head.y < 0 || head.y >= GRID) {
       endGame();
       return;
     }
 
-    // Self collision
     if (snake.some((s) => s.x === head.x && s.y === head.y)) {
       endGame();
       return;
@@ -248,7 +262,6 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
 
     snake.unshift(head);
 
-    // Check food collision
     const eatenIdx = foodsRef.current.findIndex((f) => f.x === head.x && f.y === head.y);
     if (eatenIdx !== -1) {
       const eaten = foodsRef.current[eatenIdx];
@@ -259,15 +272,12 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       setScore(scoreRef.current);
       playEatSound(eaten.type);
 
-      // Queue growth (1 segment already added by not popping, rest via growRef)
       growRef.current += growAmount - 1;
 
-      // Respawn that food
       const otherFoods = foodsRef.current.filter((_, i) => i !== eatenIdx);
       const newFood = respawnOne(eaten.type, snake, otherFoods);
       foodsRef.current = [...otherFoods, newFood];
     } else {
-      // No food eaten — shrink tail (unless growing)
       if (growRef.current > 0) {
         growRef.current -= 1;
       } else {
@@ -287,7 +297,7 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
     ];
     snakeRef.current = startSnake;
     dirRef.current = "RIGHT";
-    nextDirRef.current = "RIGHT";
+    inputQueue.current = [];
     foodsRef.current = spawnFoods(startSnake);
     growRef.current = 0;
     scoreRef.current = 0;
@@ -326,14 +336,14 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
           if (gameOverRef.current || !started) startGame();
           return;
       }
-      if (newDir && newDir !== OPPOSITE[dirRef.current]) {
+      if (newDir) {
         e.preventDefault();
-        nextDirRef.current = newDir;
+        enqueueDir(newDir);
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [started, startGame]);
+  }, [started, startGame, enqueueDir]);
 
   // Touch / swipe controls
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -353,17 +363,17 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
 
     if (Math.max(absDx, absDy) < 20) return;
 
-    let newDir: Direction;
-    if (absDx > absDy) {
-      newDir = dx > 0 ? "RIGHT" : "LEFT";
-    } else {
-      newDir = dy > 0 ? "DOWN" : "UP";
-    }
-    if (newDir !== OPPOSITE[dirRef.current]) {
-      nextDirRef.current = newDir;
-    }
+    const newDir: Direction = absDx > absDy
+      ? (dx > 0 ? "RIGHT" : "LEFT")
+      : (dy > 0 ? "DOWN" : "UP");
+    enqueueDir(newDir);
     touchStart.current = null;
-  }, []);
+  }, [enqueueDir]);
+
+  // D-pad button handler — uses onTouchStart for mobile + onMouseDown for desktop
+  const dpad = useCallback((dir: Direction) => {
+    enqueueDir(dir);
+  }, [enqueueDir]);
 
   return (
     <motion.div
@@ -407,7 +417,6 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
             className="block"
           />
 
-          {/* Start / Game Over overlay */}
           <AnimatePresence>
             {(!started || gameOver) && (
               <motion.div
@@ -438,10 +447,11 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* D-Pad controls */}
-      <div className="mt-5 flex flex-col items-center gap-3">
+      <div className="mt-5 select-none touch-none flex flex-col items-center gap-3">
         <button
-          onPointerDown={() => { if (dirRef.current !== "DOWN") nextDirRef.current = "UP"; }}
-          className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+          onTouchStart={(e) => { e.preventDefault(); dpad("UP"); }}
+          onMouseDown={() => dpad("UP")}
+          className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary active:scale-90 transition-all duration-75"
           aria-label="Up"
         >
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -450,8 +460,9 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
         </button>
         <div className="flex items-center gap-3">
           <button
-            onPointerDown={() => { if (dirRef.current !== "RIGHT") nextDirRef.current = "LEFT"; }}
-            className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+            onTouchStart={(e) => { e.preventDefault(); dpad("LEFT"); }}
+            onMouseDown={() => dpad("LEFT")}
+            className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary active:scale-90 transition-all duration-75"
             aria-label="Left"
           >
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -460,8 +471,9 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
           </button>
           <div className="w-20 h-20" />
           <button
-            onPointerDown={() => { if (dirRef.current !== "LEFT") nextDirRef.current = "RIGHT"; }}
-            className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+            onTouchStart={(e) => { e.preventDefault(); dpad("RIGHT"); }}
+            onMouseDown={() => dpad("RIGHT")}
+            className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary active:scale-90 transition-all duration-75"
             aria-label="Right"
           >
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -470,8 +482,9 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <button
-          onPointerDown={() => { if (dirRef.current !== "UP") nextDirRef.current = "DOWN"; }}
-          className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary transition-colors"
+          onTouchStart={(e) => { e.preventDefault(); dpad("DOWN"); }}
+          onMouseDown={() => dpad("DOWN")}
+          className="flex items-center justify-center w-20 h-20 rounded-2xl bg-bg-secondary active:bg-bg-tertiary active:scale-90 transition-all duration-75"
           aria-label="Down"
         >
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
