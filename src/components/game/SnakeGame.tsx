@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "motion/react";
 
 type Direction = "UP" | "DOWN" | "LEFT" | "RIGHT";
 type Point = { x: number; y: number };
-type Food = { x: number; y: number; type: "normal" | "bonus" };
+type FoodType = "green" | "yellow" | "red";
+type Food = { x: number; y: number; type: FoodType };
 
 const GRID = 20;
 const TICK_MS = 120;
@@ -18,46 +19,61 @@ function randomPos(occupied: Point[]): Point {
   return p;
 }
 
+const FOOD_TYPES: FoodType[] = ["green", "green", "yellow", "yellow", "red", "red"];
+const FOOD_POINTS: Record<FoodType, number> = { green: 1, yellow: 5, red: 10 };
+const FOOD_GROW: Record<FoodType, number> = { green: 1, yellow: 5, red: 10 };
+const FOOD_COLORS: Record<FoodType, { fill: string; glowR: string; glowG: string }> = {
+  green:  { fill: "#4ade80", glowR: "rgba(74,222,128,0.4)",  glowG: "rgba(74,222,128,0)" },
+  yellow: { fill: "#facc15", glowR: "rgba(250,204,21,0.45)", glowG: "rgba(250,204,21,0)" },
+  red:    { fill: "#f87171", glowR: "rgba(248,113,113,0.5)", glowG: "rgba(248,113,113,0)" },
+};
+
 function spawnFoods(snake: Point[]): Food[] {
-  const all: Point[] = [...snake];
   const foods: Food[] = [];
-  // 2 normal (red) + 1 bonus (yellow)
-  for (let i = 0; i < 2; i++) {
-    const p = randomPos([...all, ...foods]);
-    foods.push({ ...p, type: "normal" });
+  // 2 green + 2 yellow + 2 red = 6 total
+  for (const type of FOOD_TYPES) {
+    const p = randomPos([...snake, ...foods]);
+    foods.push({ ...p, type });
   }
-  const bp = randomPos([...all, ...foods]);
-  foods.push({ ...bp, type: "bonus" });
   return foods;
 }
 
-function respawnOne(type: "normal" | "bonus", snake: Point[], otherFoods: Food[]): Food {
+function respawnOne(type: FoodType, snake: Point[], otherFoods: Food[]): Food {
   const occupied: Point[] = [...snake, ...otherFoods];
   const p = randomPos(occupied);
   return { ...p, type };
 }
 
 // Synthesized SFX via Web Audio API
-function playEatSound(bonus: boolean) {
+function playEatSound(type: FoodType) {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
-    if (bonus) {
-      // Rising arpeggio for bonus
-      osc.type = "sine";
+    osc.type = "sine";
+
+    if (type === "red") {
+      // Triumphant rising arpeggio
       osc.frequency.setValueAtTime(520, ctx.currentTime);
       osc.frequency.setValueAtTime(660, ctx.currentTime + 0.06);
       osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
+      osc.frequency.setValueAtTime(1047, ctx.currentTime + 0.18);
       gain.gain.setValueAtTime(0.15, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
       osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.25);
+      osc.stop(ctx.currentTime + 0.3);
+    } else if (type === "yellow") {
+      // Rising two-tone
+      osc.frequency.setValueAtTime(520, ctx.currentTime);
+      osc.frequency.setValueAtTime(780, ctx.currentTime + 0.06);
+      gain.gain.setValueAtTime(0.13, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.18);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.18);
     } else {
-      // Short blip for normal
-      osc.type = "sine";
+      // Short blip
       osc.frequency.setValueAtTime(600, ctx.currentTime);
       osc.frequency.setValueAtTime(800, ctx.currentTime + 0.04);
       gain.gain.setValueAtTime(0.12, ctx.currentTime);
@@ -171,38 +187,25 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
       ctx.fill();
     });
 
-    // Foods (3 total)
+    // Foods (6 total: 2 green, 2 yellow, 2 red)
     for (const food of foodsRef.current) {
       const fx = food.x * cell + cell / 2;
       const fy = food.y * cell + cell / 2;
-      const isBonus = food.type === "bonus";
+      const colors = FOOD_COLORS[food.type];
+      const dotR = food.type === "red" ? 0.42 : food.type === "yellow" ? 0.38 : 0.35;
 
       // Glow
       const fgrd = ctx.createRadialGradient(fx, fy, 0, fx, fy, cell);
-      if (isBonus) {
-        fgrd.addColorStop(0, "rgba(250,204,21,0.45)");
-        fgrd.addColorStop(1, "rgba(250,204,21,0)");
-      } else {
-        fgrd.addColorStop(0, "rgba(248,113,113,0.4)");
-        fgrd.addColorStop(1, "rgba(248,113,113,0)");
-      }
+      fgrd.addColorStop(0, colors.glowR);
+      fgrd.addColorStop(1, colors.glowG);
       ctx.fillStyle = fgrd;
       ctx.fillRect(fx - cell, fy - cell, cell * 2, cell * 2);
 
       // Dot
       ctx.beginPath();
-      ctx.arc(fx, fy, cell * (isBonus ? 0.4 : 0.35), 0, Math.PI * 2);
-      ctx.fillStyle = isBonus ? "#facc15" : "#f87171";
+      ctx.arc(fx, fy, cell * dotR, 0, Math.PI * 2);
+      ctx.fillStyle = colors.fill;
       ctx.fill();
-
-      // Bonus star indicator
-      if (isBonus) {
-        ctx.fillStyle = "rgba(0,0,0,0.5)";
-        ctx.font = `bold ${cell * 0.45}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("★", fx, fy + 1);
-      }
     }
   }, [canvasSize]);
 
@@ -249,13 +252,12 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
     const eatenIdx = foodsRef.current.findIndex((f) => f.x === head.x && f.y === head.y);
     if (eatenIdx !== -1) {
       const eaten = foodsRef.current[eatenIdx];
-      const isBonus = eaten.type === "bonus";
-      const points = isBonus ? 5 : 1;
-      const growAmount = isBonus ? 5 : 1;
+      const points = FOOD_POINTS[eaten.type];
+      const growAmount = FOOD_GROW[eaten.type];
 
       scoreRef.current += points;
       setScore(scoreRef.current);
-      playEatSound(isBonus);
+      playEatSound(eaten.type);
 
       // Queue growth (1 segment already added by not popping, rest via growRef)
       growRef.current += growAmount - 1;
