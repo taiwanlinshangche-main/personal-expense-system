@@ -95,24 +95,24 @@ export default function AppShell({ children }: AppShellProps) {
     fetchData();
   }, [fetchData]);
 
-  // Auto-open AddTransactionSheet after initial load
+  // Auto-open AddTransactionSheet as soon as accounts are available
   const hasAutoOpened = useRef(false);
   useEffect(() => {
-    if (isLoading || hasAutoOpened.current || accounts.length === 0) return;
+    if (hasAutoOpened.current || accounts.length === 0) return;
     hasAutoOpened.current = true;
 
-    // Default to SinoPac Credit Card account
-    const sinopacCredit = accounts.find(
-      (a) => /sinopac/i.test(a.name) && /credit|信用/i.test(a.name)
-    ) ?? accounts.find((a) => /sinopac|永豐/i.test(a.name));
-    if (sinopacCredit) {
-      try { localStorage.setItem("last_account_id", sinopacCredit.id); } catch { /* */ }
+    // Default to SinoPac Card (prefer "card" over "atm")
+    const sinopacCard = accounts.find(
+      (a) => /sinopac/i.test(a.name) && /card|信用/i.test(a.name)
+    );
+    if (sinopacCard) {
+      try { localStorage.setItem("last_account_id", sinopacCard.id); } catch { /* */ }
     }
 
     addTxStartTime.current = Date.now();
     setTxSheetResetKey((k) => k + 1);
     setShowAddTransaction(true);
-  }, [isLoading, accounts]);
+  }, [accounts]);
 
   // Global SFX: play click sound for all interactive elements
   useEffect(() => {
