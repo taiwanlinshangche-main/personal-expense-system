@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import BottomNavBar from "./BottomNavBar";
-import AddTransactionSheet from "@/components/ui/AddTransactionSheet";
 import ToastContainer, { showToast } from "@/components/ui/Toast";
 import ErrorBoundary from "@/components/ui/ErrorBoundary";
 import type { AccountWithBalance, TransactionWithAccount, Category, Workspace } from "@/types/database";
@@ -22,8 +21,9 @@ interface AppShellProps {
 
 export default function AppShell({ children }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
-  const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(true); // Default: show add form on load
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newTxId, setNewTxId] = useState<string | null>(null);
   const [txSheetResetKey, setTxSheetResetKey] = useState(0);
   const addTxStartTime = useRef<number>(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,7 +95,7 @@ export default function AppShell({ children }: AppShellProps) {
     fetchData();
   }, [fetchData]);
 
-  // Auto-open AddTransactionSheet as soon as accounts are available
+  // Set default account to SinoPac Card as soon as accounts are available
   const hasAutoOpened = useRef(false);
   useEffect(() => {
     if (hasAutoOpened.current || accounts.length === 0) return;
@@ -111,7 +111,6 @@ export default function AppShell({ children }: AppShellProps) {
 
     addTxStartTime.current = Date.now();
     setTxSheetResetKey((k) => k + 1);
-    setShowAddTransaction(true);
   }, [accounts]);
 
   // Global SFX: play click sound for all interactive elements
@@ -201,7 +200,10 @@ export default function AppShell({ children }: AppShellProps) {
           })
         );
 
-        setShowAddTransaction(false);
+        // Navigate to expenses tab to show the new transaction
+        setShowAddForm(false);
+        setNewTxId(newTx.id);
+        setActiveTab("expense");
         showToast({ message: "Transaction added" });
       } catch (err) {
         showToast({ message: err instanceof Error ? err.message : "Failed to add transaction" });
@@ -399,8 +401,8 @@ export default function AppShell({ children }: AppShellProps) {
           return;
         }
 
-        // Close AddTransactionSheet if open (prevents stale data)
-        setShowAddTransaction(false);
+        // Close add form if open (prevents stale data)
+        setShowAddForm(false);
 
         // Clear cached account selection (belongs to previous workspace)
         try { localStorage.removeItem("last_account_id"); } catch { /* SSR guard */ }
@@ -428,6 +430,10 @@ export default function AppShell({ children }: AppShellProps) {
   const contextValue = {
     activeTab,
     setActiveTab,
+    showAddForm,
+    setShowAddForm,
+    newTxId,
+    isSubmitting,
     workspaces,
     currentWorkspace,
     switchWorkspace: handleSwitchWorkspace,
@@ -456,24 +462,17 @@ export default function AppShell({ children }: AppShellProps) {
 
         <BottomNavBar
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={(tab) => {
+            setShowAddForm(false);
+            setActiveTab(tab);
+          }}
           onFabClick={() => {
             addTxStartTime.current = Date.now();
             trackAddTransactionStart("current");
             setTxSheetResetKey((k) => k + 1);
-            setShowAddTransaction(true);
+            setShowAddForm(true);
           }}
           pendingCount={pendingCount}
-        />
-
-        <AddTransactionSheet
-          open={showAddTransaction}
-          onClose={() => setShowAddTransaction(false)}
-          accounts={accounts}
-          categories={categories}
-          onSubmit={handleAddTransaction}
-          isSubmitting={isSubmitting}
-          resetKey={txSheetResetKey}
         />
 
         <ToastContainer />

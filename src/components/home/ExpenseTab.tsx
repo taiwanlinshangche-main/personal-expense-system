@@ -22,7 +22,7 @@ function getMonthRange(): { start: string; end: string } {
 }
 
 export default function ExpenseTab() {
-  const { transactions, accounts, onDeleteTransaction } = useAppData();
+  const { transactions, accounts, onDeleteTransaction, newTxId } = useAppData();
   const [activeAccount, setActiveAccount] = useState("all");
   const monthRange = useMemo(getMonthRange, []);
   const [startDate, setStartDate] = useState(monthRange.start);
@@ -179,7 +179,7 @@ export default function ExpenseTab() {
                 </p>
                 <div className="mt-2 space-y-2">
                   {group.items.map((tx) => (
-                    <TransactionRow key={tx.id} transaction={tx} onDelete={onDeleteTransaction} />
+                    <TransactionRow key={tx.id} transaction={tx} onDelete={onDeleteTransaction} isNew={tx.id === newTxId} />
                   ))}
                 </div>
               </div>

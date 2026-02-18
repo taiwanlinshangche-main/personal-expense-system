@@ -56,7 +56,7 @@ interface AccountGroup {
   accounts: AccountWithBalance[];
 }
 
-function AddTransactionForm({
+export function AddTransactionForm({
   accounts,
   categories,
   onSubmit,

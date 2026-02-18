@@ -8,6 +8,10 @@ export type TabKey = "overview" | "expense" | "insight" | "claims";
 interface AppDataContextType {
   activeTab: TabKey;
   setActiveTab: (tab: TabKey) => void;
+  showAddForm: boolean;
+  setShowAddForm: (show: boolean) => void;
+  newTxId: string | null;
+  isSubmitting: boolean;
   workspaces: Workspace[];
   currentWorkspace: Workspace | null;
   switchWorkspace: (workspaceId: string) => Promise<void>;

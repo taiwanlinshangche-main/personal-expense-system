@@ -11,6 +11,7 @@ interface TransactionRowProps {
   onTap?: (tx: TransactionWithAccount) => void;
   onDelete?: (txId: string) => void;
   showAccount?: boolean;
+  isNew?: boolean;
   actionButton?: {
     label: string;
     onClick: (tx: TransactionWithAccount) => void;
@@ -22,6 +23,7 @@ export default function TransactionRow({
   onTap,
   onDelete,
   showAccount = true,
+  isNew = false,
   actionButton,
 }: TransactionRowProps) {
   const [showConfirm, setShowConfirm] = useState(false);
@@ -56,6 +58,11 @@ export default function TransactionRow({
             <p className="truncate font-medium text-text-primary">
               {tx.note || "(No note)"}
             </p>
+            {isNew && (
+              <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase bg-accent/15 text-accent">
+                new
+              </span>
+            )}
             {tx.is_company_advance && (
               <span className="shrink-0 text-xs" aria-label="Company advance">
                 🏢

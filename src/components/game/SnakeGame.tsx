@@ -81,6 +81,35 @@ function playEatSound(type: FoodType) {
   } catch { /* */ }
 }
 
+function playGameOverMusic() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    // Congratulatory melody: C5 E5 G5 C6 (ascending arpeggio) then a sustained chord
+    const notes = [
+      { freq: 523, start: 0, dur: 0.15 },    // C5
+      { freq: 659, start: 0.12, dur: 0.15 },  // E5
+      { freq: 784, start: 0.24, dur: 0.15 },  // G5
+      { freq: 1047, start: 0.36, dur: 0.4 },  // C6 (longer)
+      // Final chord: C5+E5+G5
+      { freq: 523, start: 0.5, dur: 0.5 },
+      { freq: 659, start: 0.5, dur: 0.5 },
+      { freq: 784, start: 0.5, dur: 0.5 },
+    ];
+    for (const n of notes) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(n.freq, ctx.currentTime + n.start);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime + n.start);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + n.start + n.dur);
+      osc.start(ctx.currentTime + n.start);
+      osc.stop(ctx.currentTime + n.start + n.dur);
+    }
+  } catch { /* */ }
+}
+
 function tryVibrate() {
   try { navigator.vibrate?.(8); } catch { /* */ }
 }
@@ -199,6 +228,7 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
     gameOverRef.current = true;
     setGameOver(true);
     if (tickRef.current) clearInterval(tickRef.current);
+    playGameOverMusic();
     const m = modeRef.current;
     if (scoreRef.current > highScoreRef.current[m]) {
       highScoreRef.current[m] = scoreRef.current;
@@ -375,7 +405,6 @@ export default function SnakeGame({ onClose }: { onClose: () => void }) {
           >
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
           </button>
-          <div className="flex-1 h-full" />
           <button
             onTouchStart={(e) => { e.preventDefault(); dpad("RIGHT"); }}
             onMouseDown={() => dpad("RIGHT")}
