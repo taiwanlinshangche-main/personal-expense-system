@@ -13,6 +13,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Expense Tracker",
   description: "A minimal, mobile-first personal expense tracker",
+  icons: {
+    icon: "/money.png",
+    apple: "/money.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
