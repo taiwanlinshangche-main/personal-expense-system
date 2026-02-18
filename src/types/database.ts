@@ -1,5 +1,7 @@
 export type ReimbursementStatus = "pending" | "claimed" | "paid";
 
+export type WorkspaceType = "personal" | "company";
+
 export interface Profile {
   id: string;
   display_name: string;
@@ -7,9 +9,22 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface Workspace {
+  id: string;
+  user_id: string;
+  name: string;
+  type: WorkspaceType;
+  emoji: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Account {
   id: string;
   user_id: string;
+  workspace_id: string;
   name: string;
   initial_balance: number;
   sort_order: number;
@@ -22,6 +37,7 @@ export interface Account {
 export interface Transaction {
   id: string;
   user_id: string;
+  workspace_id: string;
   account_id: string;
   amount: number;
   note: string;
@@ -36,6 +52,7 @@ export interface Transaction {
 export interface Category {
   id: string;
   user_id: string;
+  workspace_id: string;
   name: string;
   emoji: string;
   sort_order: number;

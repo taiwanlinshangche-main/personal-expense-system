@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import BottomSheet from "./BottomSheet";
 import CalendarPicker from "./CalendarPicker";
 import { cn } from "@/lib/cn";
 import { getTodayString } from "@/lib/format";
 import { playClick } from "@/lib/sfx";
+import { useAppData } from "@/hooks/useAppData";
 import type { AccountWithBalance, Category } from "@/types/database";
 
 interface AddTransactionSheetProps {
@@ -66,6 +67,9 @@ function AddTransactionForm({
   onSubmit: AddTransactionSheetProps["onSubmit"];
   isSubmitting: boolean;
 }) {
+  const { currentWorkspace } = useAppData();
+  const isCompanyWorkspace = currentWorkspace?.type === "company";
+
   const defaultAccountId = (() => {
     if (typeof window === "undefined") return accounts[0]?.id || "";
     const last = localStorage.getItem("last_account_id");
@@ -138,6 +142,15 @@ function AddTransactionForm({
   const [note, setNote] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isCompanyAdvance, setIsCompanyAdvance] = useState(false);
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  // Focus amount input without scrolling (prevents mobile sheet from jumping to bottom)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      amountRef.current?.focus({ preventScroll: true });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Resolve final account_id from group + sub-selection
   const activeGroup = groups.find((g) => g.key === selectedGroupKey);
@@ -207,19 +220,19 @@ function AddTransactionForm({
         <div className="mt-1 flex items-center rounded-xl border border-border bg-bg-secondary px-4 py-3 focus-within:border-accent transition-colors">
           <span className="text-text-secondary mr-1">NT$</span>
           <input
+            ref={amountRef}
             type="number"
             inputMode="numeric"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0"
-            autoFocus
             className="flex-1 bg-transparent text-lg font-semibold tabular-nums text-text-primary outline-none placeholder:text-text-tertiary"
           />
         </div>
       </div>
 
-      {/* Account Group Selector */}
-      {groups.length > 0 && (
+      {/* Account Group Selector — hidden when single account (auto-selected) */}
+      {!(groups.length === 1 && groups[0].accounts.length === 1) && groups.length > 0 && (
         <div className="mt-4">
           <label className="text-sm font-medium text-text-secondary">Account</label>
           <div className="mt-2 flex gap-2">
@@ -341,8 +354,8 @@ function AddTransactionForm({
         />
       </div>
 
-      {/* Company advance toggle */}
-      {type === "expense" && (
+      {/* Company advance toggle — hidden in Company workspace */}
+      {type === "expense" && !isCompanyWorkspace && (
         <label className="mt-4 flex items-center justify-between rounded-xl border border-border bg-bg-secondary px-4 py-3 cursor-pointer">
           <span className="text-sm font-medium text-text-primary">
             Company Advance

@@ -1,48 +1,39 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAuthenticatedClient, errorResponse } from "@/lib/supabase/api-utils";
+import { getClient, errorResponse } from "@/lib/supabase/api-utils";
 import { createAccountSchema } from "@/lib/validations";
 
-// GET /api/accounts — list accounts with computed balances
+// GET /api/accounts — list accounts (balances computed by /api/summary)
 export async function GET() {
-  const { supabase, user, errorResponse: authError } =
-    await getAuthenticatedClient();
-  if (authError) return authError;
+  const { supabase, userId, workspaceId, errorResponse: clientError } = await getClient();
+  if (clientError) return clientError;
+  if (!workspaceId) return errorResponse("No active workspace", 400);
 
-  // Use a raw query for the computed balance + month spending
-  const { data, error } = await supabase!.rpc("get_accounts_with_balance", {
-    p_user_id: user!.id,
-  });
+  const { data: accounts, error } = await supabase!
+    .from("accounts")
+    .select("*")
+    .eq("user_id", userId!)
+    .eq("workspace_id", workspaceId)
+    .eq("is_archived", false)
+    .order("sort_order");
 
   if (error) {
-    // Fallback: if the RPC doesn't exist yet, use simple query
-    const { data: accounts, error: fallbackError } = await supabase!
-      .from("accounts")
-      .select("*")
-      .eq("is_archived", false)
-      .order("sort_order");
-
-    if (fallbackError) {
-      return errorResponse(fallbackError.message, 500);
-    }
-
-    // Return accounts without computed fields as fallback
-    return NextResponse.json(
-      accounts.map((a: Record<string, unknown>) => ({
-        ...a,
-        current_balance: a.initial_balance,
-        month_spending: 0,
-      }))
-    );
+    return errorResponse(error.message, 500);
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json(
+    accounts.map((a: Record<string, unknown>) => ({
+      ...a,
+      current_balance: a.initial_balance,
+      month_spending: 0,
+    }))
+  );
 }
 
 // POST /api/accounts — create a new account
 export async function POST(request: NextRequest) {
-  const { supabase, user, errorResponse: authError } =
-    await getAuthenticatedClient();
-  if (authError) return authError;
+  const { supabase, userId, workspaceId, errorResponse: clientError } = await getClient();
+  if (clientError) return clientError;
+  if (!workspaceId) return errorResponse("No active workspace", 400);
 
   const body = await request.json();
   const parsed = createAccountSchema.safeParse(body);
@@ -51,11 +42,12 @@ export async function POST(request: NextRequest) {
     return errorResponse(parsed.error.issues[0].message);
   }
 
-  // Get max sort_order for this user
+  // Get max sort_order for this workspace
   const { data: maxOrder } = await supabase!
     .from("accounts")
     .select("sort_order")
-    .eq("user_id", user!.id)
+    .eq("user_id", userId!)
+    .eq("workspace_id", workspaceId)
     .order("sort_order", { ascending: false })
     .limit(1)
     .single();
@@ -65,7 +57,8 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase!
     .from("accounts")
     .insert({
-      user_id: user!.id,
+      user_id: userId!,
+      workspace_id: workspaceId,
       name: parsed.data.name,
       initial_balance: parsed.data.initial_balance,
       sort_order: nextOrder,

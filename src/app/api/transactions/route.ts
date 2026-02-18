@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAuthenticatedClient, errorResponse } from "@/lib/supabase/api-utils";
+import { getClient, errorResponse } from "@/lib/supabase/api-utils";
 import { createTransactionSchema } from "@/lib/validations";
 
 // GET /api/transactions — list transactions with account name
 export async function GET(request: NextRequest) {
-  const { supabase, user, errorResponse: authError } =
-    await getAuthenticatedClient();
-  if (authError) return authError;
+  const { supabase, userId, workspaceId, errorResponse: clientError } = await getClient();
+  if (clientError) return clientError;
+  if (!workspaceId) return errorResponse("No active workspace", 400);
 
   const { searchParams } = new URL(request.url);
   const accountId = searchParams.get("account_id");
@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
   let query = supabase!
     .from("transactions")
     .select("*, accounts!inner(name)")
-    .eq("user_id", user!.id)
+    .eq("user_id", userId!)
+    .eq("workspace_id", workspaceId)
     .order("date", { ascending: false })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
@@ -55,9 +56,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/transactions — create a new transaction
 export async function POST(request: NextRequest) {
-  const { supabase, user, errorResponse: authError } =
-    await getAuthenticatedClient();
-  if (authError) return authError;
+  const { supabase, userId, workspaceId, errorResponse: clientError } = await getClient();
+  if (clientError) return clientError;
+  if (!workspaceId) return errorResponse("No active workspace", 400);
 
   const body = await request.json();
   const parsed = createTransactionSchema.safeParse(body);
@@ -66,12 +67,13 @@ export async function POST(request: NextRequest) {
     return errorResponse(parsed.error.issues[0].message);
   }
 
-  // Verify the account belongs to the user
+  // Verify the account belongs to the user and workspace
   const { data: account } = await supabase!
     .from("accounts")
     .select("id")
     .eq("id", parsed.data.account_id)
-    .eq("user_id", user!.id)
+    .eq("user_id", userId!)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!account) {
@@ -81,7 +83,8 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase!
     .from("transactions")
     .insert({
-      user_id: user!.id,
+      user_id: userId!,
+      workspace_id: workspaceId,
       account_id: parsed.data.account_id,
       amount: parsed.data.amount,
       note: parsed.data.note,

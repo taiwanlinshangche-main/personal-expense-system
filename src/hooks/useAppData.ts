@@ -1,9 +1,12 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { AccountWithBalance, TransactionWithAccount, Category } from "@/types/database";
+import type { AccountWithBalance, TransactionWithAccount, Category, Workspace } from "@/types/database";
 
 interface AppDataContextType {
+  workspaces: Workspace[];
+  currentWorkspace: Workspace | null;
+  switchWorkspace: (workspaceId: string) => Promise<void>;
   accounts: AccountWithBalance[];
   transactions: TransactionWithAccount[];
   categories: Category[];
@@ -26,6 +29,7 @@ interface AppDataContextType {
   }) => Promise<void>;
   onAddCategory: (data: { name: string; emoji: string }) => Promise<void>;
   onDeleteCategory: (id: string) => Promise<void>;
+  onDeleteTransaction: (txId: string) => Promise<void>;
   onStatusChange: (txId: string, newStatus: string) => void;
 }
 

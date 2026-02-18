@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
-import { motion } from "motion/react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { motion, useMotionValue, useSpring } from "motion/react";
 import { useAppData } from "@/hooks/useAppData";
 import { formatCurrency, formatSignedCurrency } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { playClick } from "@/lib/sfx";
 
 type ViewMode = "week" | "month" | "year";
 
@@ -50,18 +49,31 @@ function ChevronRight() {
   );
 }
 
-export default function InsightTab() {
+interface InsightTabProps {
+  initialAccountId?: string | null;
+  onConsumeAccountId?: () => void;
+}
+
+export default function InsightTab({ initialAccountId, onConsumeAccountId }: InsightTabProps = {}) {
   const { accounts, transactions, categories } = useAppData();
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [selectedCategoryName, setSelectedCategoryName] = useState("all");
   const [viewMode, setViewMode] = useState<ViewMode>("month");
-  const [selectedPointIdx, setSelectedPointIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedMonthYear, setSelectedMonthYear] = useState(now.getFullYear());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+  // Apply initial account from navigation
+  useEffect(() => {
+    if (initialAccountId) {
+      setSelectedAccountId(initialAccountId);
+      setSelectedCategoryName("all");
+      onConsumeAccountId?.();
+    }
+  }, [initialAccountId, onConsumeAccountId]);
 
   // Navigation
   const prevMonth = () => {
@@ -71,7 +83,6 @@ export default function InsightTab() {
     } else {
       setSelectedMonth((m) => m - 1);
     }
-    setSelectedPointIdx(null);
   };
 
   const nextMonth = () => {
@@ -81,17 +92,14 @@ export default function InsightTab() {
     } else {
       setSelectedMonth((m) => m + 1);
     }
-    setSelectedPointIdx(null);
   };
 
   const prevYear = () => {
     setSelectedYear((y) => y - 1);
-    setSelectedPointIdx(null);
   };
 
   const nextYear = () => {
     setSelectedYear((y) => y + 1);
-    setSelectedPointIdx(null);
   };
 
   const canNextMonth =
@@ -231,6 +239,35 @@ export default function InsightTab() {
     selectedMonthYear,
     selectedYear,
   ]);
+
+  // Default selected point: today's index in chartData
+  const todayIndex = useMemo(() => {
+    if (chartData.length === 0) return 0;
+    const today = new Date();
+    if (viewMode === "week") {
+      // Last point = today (week ends on today)
+      return chartData.length - 1;
+    }
+    if (viewMode === "month") {
+      // Index = day - 1, clamped to array bounds
+      if (today.getFullYear() === selectedMonthYear && today.getMonth() === selectedMonth) {
+        return Math.min(today.getDate() - 1, chartData.length - 1);
+      }
+      return chartData.length - 1;
+    }
+    // Year view: index = month number
+    if (today.getFullYear() === selectedYear) {
+      return Math.min(today.getMonth(), chartData.length - 1);
+    }
+    return chartData.length - 1;
+  }, [chartData, viewMode, selectedMonth, selectedMonthYear, selectedYear]);
+
+  const [selectedPointIdx, setSelectedPointIdx] = useState(todayIndex);
+
+  // Keep selectedPointIdx in sync when chartData/filters change
+  useEffect(() => {
+    setSelectedPointIdx(todayIndex);
+  }, [todayIndex]);
 
   // Comparison: current balance vs balance one period ago
   const comparison = useMemo(() => {
@@ -415,25 +452,19 @@ export default function InsightTab() {
     ? "var(--color-income)"
     : "var(--color-expense)";
 
-  // Chart tap handler
-  const handleChartTap = useCallback(
-    (clientX: number) => {
-      if (!svgRef.current || coords.length === 0) return;
-      const rect = svgRef.current.getBoundingClientRect();
-      const svgX = ((clientX - rect.left) / rect.width) * SVG_W;
-      let closest = 0;
-      let closestDist = Infinity;
-      for (let i = 0; i < coords.length; i++) {
-        const dist = Math.abs(coords[i].x - svgX);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closest = i;
-        }
-      }
-      setSelectedPointIdx((prev) => (prev === closest ? null : closest));
-    },
-    [coords]
-  );
+  // Spring-animated cursor
+  const cursorX = useMotionValue(0);
+  const cursorY = useMotionValue(0);
+  const springX = useSpring(cursorX, { stiffness: 300, damping: 28 });
+  const springY = useSpring(cursorY, { stiffness: 300, damping: 28 });
+
+  // Update spring targets when selectedPointIdx changes
+  useEffect(() => {
+    if (coords[selectedPointIdx]) {
+      cursorX.set(coords[selectedPointIdx].x);
+      cursorY.set(coords[selectedPointIdx].y);
+    }
+  }, [selectedPointIdx, coords, cursorX, cursorY]);
 
   const periodLabel = useMemo(() => {
     if (viewMode === "week") {
@@ -450,22 +481,52 @@ export default function InsightTab() {
     return `${selectedYear}`;
   }, [viewMode, selectedMonth, selectedMonthYear, selectedYear]);
 
+  const [openDropdown, setOpenDropdown] = useState<"account" | "category" | null>(null);
+
   const changeView = (v: ViewMode) => {
     setViewMode(v);
-    setSelectedPointIdx(null);
   };
   const changeAccount = (id: string) => {
     setSelectedAccountId(id);
-    setSelectedPointIdx(null);
+    setOpenDropdown(null);
   };
   const changeCategory = (name: string) => {
     setSelectedCategoryName(name);
-    setSelectedPointIdx(null);
+    setOpenDropdown(null);
   };
 
-  // Tooltip
+  const toggleDropdown = (type: "account" | "category") => {
+    setOpenDropdown((prev) => (prev === type ? null : type));
+  };
+
+  // Close dropdown on outside click
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!openDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openDropdown]);
+
+  // Labels for the dropdown pills
+  const accountLabel = selectedAccountId === "all"
+    ? "All"
+    : accounts.find((a) => a.id === selectedAccountId)?.name ?? "All";
+
+  const categoryLabel = selectedCategoryName === "all"
+    ? "All Categories"
+    : (() => {
+        const cat = categories.find((c) => c.name === selectedCategoryName);
+        return cat ? `${cat.emoji ? cat.emoji + " " : ""}${cat.name}` : selectedCategoryName;
+      })();
+
+  // Tooltip — always show selected point (defaults to today)
   const tooltipPoint =
-    selectedPointIdx !== null && chartData[selectedPointIdx]
+    chartData[selectedPointIdx]
       ? { ...chartData[selectedPointIdx], coord: coords[selectedPointIdx] }
       : null;
 
@@ -476,38 +537,114 @@ export default function InsightTab() {
 
   return (
     <div className="px-5 pb-8">
-      {/* Account chips + Time range */}
-      <div className="flex items-start gap-2">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-1 pb-1">
+      {/* Filter row: Account dropdown, Category dropdown, Time range */}
+      <div ref={dropdownRef} className="flex items-center gap-2">
+        {/* Account dropdown */}
+        <div className="relative">
           <button
-            onClick={() => changeAccount("all")}
+            onClick={() => toggleDropdown("account")}
             className={cn(
-              "shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-all",
-              selectedAccountId === "all"
+              "flex items-center gap-1 rounded-full px-3.5 py-2 text-[13px] font-medium transition-all",
+              selectedAccountId !== "all"
                 ? "bg-text-primary text-bg-primary"
                 : "bg-bg-secondary text-text-secondary"
             )}
           >
-            All
+            {accountLabel}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={cn("transition-transform", openDropdown === "account" && "rotate-180")}>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
-          {accounts.map((account) => (
-            <button
-              key={account.id}
-              onClick={() => changeAccount(account.id)}
-              className={cn(
-                "shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-all",
-                selectedAccountId === account.id
-                  ? "bg-text-primary text-bg-primary"
-                  : "bg-bg-secondary text-text-secondary"
-              )}
+          {openDropdown === "account" && (
+            <motion.div
+              initial={{ opacity: 0, y: -4, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.15 }}
+              className="absolute top-full left-0 mt-1.5 z-50 min-w-[160px] rounded-xl bg-bg-secondary border border-border shadow-lg overflow-hidden"
             >
-              {account.name}
-            </button>
-          ))}
+              <button
+                onClick={() => changeAccount("all")}
+                className={cn(
+                  "w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors",
+                  selectedAccountId === "all"
+                    ? "bg-bg-tertiary text-text-primary"
+                    : "text-text-secondary hover:bg-bg-tertiary"
+                )}
+              >
+                All
+              </button>
+              {accounts.map((account) => (
+                <button
+                  key={account.id}
+                  onClick={() => changeAccount(account.id)}
+                  className={cn(
+                    "w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors",
+                    selectedAccountId === account.id
+                      ? "bg-bg-tertiary text-text-primary"
+                      : "text-text-secondary hover:bg-bg-tertiary"
+                  )}
+                >
+                  {account.name}
+                </button>
+              ))}
+            </motion.div>
+          )}
         </div>
 
-        {/* Time range pills */}
-        <div className="flex shrink-0 rounded-full bg-bg-secondary p-0.5">
+        {/* Category dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => toggleDropdown("category")}
+            className={cn(
+              "flex items-center gap-1 rounded-full px-3.5 py-2 text-[13px] font-medium transition-all",
+              selectedCategoryName !== "all"
+                ? "bg-text-primary text-bg-primary"
+                : "bg-bg-secondary text-text-secondary"
+            )}
+          >
+            {categoryLabel}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={cn("transition-transform", openDropdown === "category" && "rotate-180")}>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          {openDropdown === "category" && (
+            <motion.div
+              initial={{ opacity: 0, y: -4, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.15 }}
+              className="absolute top-full left-0 mt-1.5 z-50 min-w-[170px] rounded-xl bg-bg-secondary border border-border shadow-lg overflow-hidden"
+            >
+              <button
+                onClick={() => changeCategory("all")}
+                className={cn(
+                  "w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors",
+                  selectedCategoryName === "all"
+                    ? "bg-bg-tertiary text-text-primary"
+                    : "text-text-secondary hover:bg-bg-tertiary"
+                )}
+              >
+                All Categories
+              </button>
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => changeCategory(cat.name)}
+                  className={cn(
+                    "w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors",
+                    selectedCategoryName === cat.name
+                      ? "bg-bg-tertiary text-text-primary"
+                      : "text-text-secondary hover:bg-bg-tertiary"
+                  )}
+                >
+                  {cat.emoji && `${cat.emoji} `}{cat.name}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </div>
+
+        {/* Time range pills — pushed to the right */}
+        <div className="flex ml-auto shrink-0 rounded-full bg-bg-secondary p-0.5">
           {VIEW_LABELS.map((v) => (
             <button
               key={v.key}
@@ -525,37 +662,6 @@ export default function InsightTab() {
         </div>
       </div>
 
-      {/* Category filter chips */}
-      {categories.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide mt-2 pb-1">
-          <button
-            onClick={() => changeCategory("all")}
-            className={cn(
-              "shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all",
-              selectedCategoryName === "all"
-                ? "bg-text-primary text-bg-primary"
-                : "bg-bg-secondary text-text-secondary"
-            )}
-          >
-            All Categories
-          </button>
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => changeCategory(cat.name)}
-              className={cn(
-                "shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all",
-                selectedCategoryName === cat.name
-                  ? "bg-text-primary text-bg-primary"
-                  : "bg-bg-secondary text-text-secondary"
-              )}
-            >
-              {cat.emoji && `${cat.emoji} `}{cat.name}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Balance + Comparison */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -567,186 +673,274 @@ export default function InsightTab() {
           {formatCurrency(displayBalance)}
         </p>
 
-        {tooltipPoint ? (
-          <p className="mt-2 text-sm text-text-secondary">
+        {/* Selected point date label — always visible */}
+        {tooltipPoint && (
+          <p className="mt-1 text-sm text-text-secondary">
             {tooltipPoint.fullLabel}
           </p>
-        ) : (
-          <>
-            {/* Comparison line */}
-            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-              <span
-                className={cn(
-                  "text-sm font-medium",
-                  isChangePositive ? "text-income" : "text-expense"
-                )}
-              >
-                {isChangePositive ? "↑" : "↓"}{" "}
-                {Math.abs(comparison.percentChange).toFixed(1)}% (
-                {formatSignedCurrency(comparison.change)})
-              </span>
-              <span className="text-sm text-text-tertiary">
-                {comparison.label}
-              </span>
-            </div>
-
-            {/* Period income / spending */}
-            <div className="mt-3 flex items-center gap-5">
-              <div className="flex items-center gap-1.5">
-                <div className="h-5 w-5 rounded-full bg-income/10 flex items-center justify-center">
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--income)"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 19V5" />
-                    <path d="m5 12 7-7 7 7" />
-                  </svg>
-                </div>
-                <span className="text-sm font-medium tabular-nums text-text-primary">
-                  {formatCurrency(periodStats.income)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="h-5 w-5 rounded-full bg-expense/10 flex items-center justify-center">
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--expense)"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 5v14" />
-                    <path d="m19 12-7 7-7-7" />
-                  </svg>
-                </div>
-                <span className="text-sm font-medium tabular-nums text-text-primary">
-                  {formatCurrency(periodStats.spending)}
-                </span>
-              </div>
-            </div>
-          </>
         )}
-      </motion.div>
 
-      {/* Chart */}
-      <motion.div
-        key={`${viewMode}-${selectedMonth}-${selectedMonthYear}-${selectedYear}-${selectedAccountId}`}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="mt-4"
-      >
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          className="w-full"
-          preserveAspectRatio="xMidYMid meet"
-          onClick={(e) => {
-            playClick();
-            handleChartTap(e.clientX);
-          }}
-          onTouchEnd={(e) => {
-            if (e.changedTouches[0]) {
-              playClick();
-              handleChartTap(e.changedTouches[0].clientX);
-            }
-          }}
-          style={{ cursor: "pointer" }}
-        >
-          <defs>
-            <linearGradient id="insightAreaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={lineColor} stopOpacity="0.18" />
-              <stop offset="100%" stopColor={lineColor} stopOpacity="0.01" />
-            </linearGradient>
-          </defs>
+        {/* Comparison line — always visible */}
+        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+          <span
+            className={cn(
+              "text-sm font-medium",
+              isChangePositive ? "text-income" : "text-expense"
+            )}
+          >
+            {isChangePositive ? "↑" : "↓"}{" "}
+            {Math.abs(comparison.percentChange).toFixed(1)}% (
+            {formatSignedCurrency(comparison.change)})
+          </span>
+          <span className="text-sm text-text-tertiary">
+            {comparison.label}
+          </span>
+        </div>
 
-          {/* Subtle grid line at midpoint */}
-          <line
-            x1={CHART_L}
-            y1={(CHART_T + CHART_B) / 2}
-            x2={CHART_R}
-            y2={(CHART_T + CHART_B) / 2}
-            stroke="var(--color-border)"
-            strokeWidth="0.5"
-            strokeDasharray="4 4"
-            opacity="0.3"
-          />
-
-          {/* Area fill */}
-          {areaPath && <path d={areaPath} fill="url(#insightAreaGrad)" />}
-
-          {/* Line */}
-          {linePath && (
-            <path
-              d={linePath}
-              fill="none"
-              stroke={lineColor}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-
-          {/* Selected point */}
-          {tooltipPoint && tooltipPoint.coord && (
-            <>
-              <line
-                x1={tooltipPoint.coord.x}
-                y1={CHART_T}
-                x2={tooltipPoint.coord.x}
-                y2={CHART_B}
-                stroke="var(--color-text-tertiary)"
-                strokeWidth="0.5"
-                opacity="0.4"
-              />
-              <circle
-                cx={tooltipPoint.coord.x}
-                cy={tooltipPoint.coord.y}
-                r="5"
-                fill={lineColor}
-                stroke="var(--color-bg-primary)"
-                strokeWidth="2.5"
-              />
-              <text
-                x={tooltipPoint.coord.x}
-                y={Math.max(tooltipPoint.coord.y - 14, CHART_T + 6)}
-                textAnchor="middle"
-                fill="var(--color-text-secondary)"
-                fontSize="10"
-                fontWeight="600"
-                fontFamily="inherit"
+        {/* Period income / spending — always visible */}
+        <div className="mt-3 flex items-center gap-5">
+          <div className="flex items-center gap-1.5">
+            <div className="h-5 w-5 rounded-full bg-income/10 flex items-center justify-center">
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--income)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                {tooltipPoint.fullLabel.toUpperCase()}
-              </text>
-            </>
-          )}
-
-          {/* X-axis labels */}
-          {xLabels.map((label, i) => (
-            <text
-              key={i}
-              x={label.x}
-              y={CHART_B + 14}
-              textAnchor="middle"
-              fill="var(--color-text-tertiary)"
-              fontSize="9"
-              fontFamily="inherit"
-              opacity="0.6"
-            >
-              {label.text}
-            </text>
-          ))}
-        </svg>
+                <path d="M12 19V5" />
+                <path d="m5 12 7-7 7 7" />
+              </svg>
+            </div>
+            <span className="text-sm font-medium tabular-nums text-text-primary">
+              {formatCurrency(periodStats.income)}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-5 w-5 rounded-full bg-expense/10 flex items-center justify-center">
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--expense)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14" />
+                <path d="m19 12-7 7-7-7" />
+              </svg>
+            </div>
+            <span className="text-sm font-medium tabular-nums text-text-primary">
+              {formatCurrency(periodStats.spending)}
+            </span>
+          </div>
+        </div>
       </motion.div>
+
+      {/* Chart — Floating Glass Container */}
+      <div className="relative mt-4 rounded-2xl overflow-hidden">
+        {/* Layer 6: Glassmorphism background */}
+        <div
+          className="absolute inset-0 rounded-2xl"
+          style={{
+            background: "rgba(255, 255, 255, 0.03)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            border: "1px solid rgba(255, 255, 255, 0.06)",
+          }}
+        />
+
+        <motion.div
+          key={`${viewMode}-${selectedMonth}-${selectedMonthYear}-${selectedYear}-${selectedAccountId}-${selectedCategoryName}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4 }}
+          className="relative"
+        >
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+            className="w-full"
+            preserveAspectRatio="xMidYMid meet"
+            style={{ cursor: "default" }}
+          >
+            <defs>
+              {/* Layer 1: Multi-layer glow filter */}
+              <filter id="lineGlow" x="-25%" y="-25%" width="150%" height="150%">
+                {/* Wide ambient glow */}
+                <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur3">
+                  {/* Layer 4: Breathing glow pulse */}
+                  <animate
+                    attributeName="stdDeviation"
+                    values="6;10;6"
+                    dur="4s"
+                    repeatCount="indefinite"
+                  />
+                </feGaussianBlur>
+                <feColorMatrix in="blur3" result="color3" type="matrix"
+                  values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.25 0" />
+                {/* Medium glow */}
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur2" />
+                <feColorMatrix in="blur2" result="color2" type="matrix"
+                  values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.4 0" />
+                {/* Tight inner glow */}
+                <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="blur1" />
+                <feMerge>
+                  <feMergeNode in="color3" />
+                  <feMergeNode in="color2" />
+                  <feMergeNode in="blur1" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+
+              {/* Layer 3: Breathing area gradient */}
+              <linearGradient id="insightAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={lineColor}>
+                  <animate
+                    attributeName="stop-opacity"
+                    values="0.20;0.08;0.20"
+                    dur="4s"
+                    repeatCount="indefinite"
+                  />
+                </stop>
+                <stop offset="100%" stopColor={lineColor} stopOpacity="0.01" />
+              </linearGradient>
+            </defs>
+
+            {/* Subtle grid line at midpoint */}
+            <line
+              x1={CHART_L}
+              y1={(CHART_T + CHART_B) / 2}
+              x2={CHART_R}
+              y2={(CHART_T + CHART_B) / 2}
+              stroke="var(--color-border)"
+              strokeWidth="0.5"
+              strokeDasharray="4 4"
+              opacity="0.2"
+            />
+
+            {/* Layer 3: Breathing area fill (fades in after line draws) */}
+            {areaPath && (
+              <motion.path
+                d={areaPath}
+                fill="url(#insightAreaGrad)"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.0, duration: 0.8, ease: "easeOut" }}
+              />
+            )}
+
+            {/* Layer 1+2: Glowing line with draw-on animation */}
+            {linePath && (
+              <motion.path
+                d={linePath}
+                fill="none"
+                stroke={lineColor}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                filter="url(#lineGlow)"
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{
+                  pathLength: { duration: 1.5, ease: [0.33, 1, 0.68, 1] },
+                  opacity: { duration: 0.3 },
+                }}
+              />
+            )}
+
+            {/* Layer 7: Pulsing ambient dots (week/year view or sparse data) */}
+            {coords.length <= 12 && coords.map((pt, i) => (
+              <circle
+                key={`dot-${i}`}
+                cx={pt.x}
+                cy={pt.y}
+                r="1.5"
+                fill={lineColor}
+                opacity="0"
+              >
+                <animate
+                  attributeName="opacity"
+                  values="0;0.5;0"
+                  dur={`${3 + (i % 3)}s`}
+                  begin={`${1.5 + (i * 0.3) % 2}s`}
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="r"
+                  values="1;2.5;1"
+                  dur={`${3 + (i % 3)}s`}
+                  begin={`${1.5 + (i * 0.3) % 2}s`}
+                  repeatCount="indefinite"
+                />
+              </circle>
+            ))}
+
+            {/* Layer 5: Spring-animated cursor — always visible at selected point */}
+            {coords.length > 0 && (
+              <>
+                {/* Vertical guide line */}
+                <motion.line
+                  x1={springX}
+                  y1={CHART_T}
+                  x2={springX}
+                  y2={CHART_B}
+                  stroke="var(--color-text-tertiary)"
+                  strokeWidth="0.5"
+                  strokeDasharray="3 3"
+                  opacity="0.3"
+                />
+                {/* Outer glow ring */}
+                <motion.circle
+                  cx={springX}
+                  cy={springY}
+                  r="14"
+                  fill={lineColor}
+                  opacity="0.06"
+                />
+                {/* Mid ring */}
+                <motion.circle
+                  cx={springX}
+                  cy={springY}
+                  r="9"
+                  fill={lineColor}
+                  opacity="0.1"
+                />
+                {/* Data point dot */}
+                <motion.circle
+                  cx={springX}
+                  cy={springY}
+                  r="5"
+                  fill={lineColor}
+                  stroke="var(--color-bg-primary)"
+                  strokeWidth="2.5"
+                />
+              </>
+            )}
+
+            {/* X-axis labels */}
+            {xLabels.map((label, i) => (
+              <text
+                key={i}
+                x={label.x}
+                y={CHART_B + 14}
+                textAnchor="middle"
+                fill="var(--color-text-tertiary)"
+                fontSize="9"
+                fontFamily="inherit"
+                opacity="0.6"
+              >
+                {label.text}
+              </text>
+            ))}
+          </svg>
+        </motion.div>
+      </div>
 
       {/* Period navigation */}
       <div className="mt-1 flex items-center justify-center gap-3">

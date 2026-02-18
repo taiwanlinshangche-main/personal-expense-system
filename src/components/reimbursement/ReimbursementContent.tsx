@@ -18,6 +18,7 @@ interface ReimbursementContentProps {
     txId: string,
     newStatus: ReimbursementStatus
   ) => void;
+  onDelete?: (txId: string) => void;
 }
 
 const SEGMENTS = [
@@ -31,6 +32,7 @@ export default function ReimbursementContent({
   accounts,
   isLoading,
   onStatusChange,
+  onDelete,
 }: ReimbursementContentProps) {
   const [activeSegment, setActiveSegment] = useState("pending");
   const [activeAccount, setActiveAccount] = useState("all");
@@ -121,14 +123,7 @@ export default function ReimbursementContent({
   };
 
   return (
-    <div className="px-4 pt-4 pb-4">
-      {/* Header */}
-      <header>
-        <h1 className="text-[22px] font-semibold text-text-primary">
-          Reimbursement
-        </h1>
-      </header>
-
+    <div className="px-5 pb-8">
       {/* Summary Card */}
       <section className="mt-5 rounded-2xl bg-accent-soft p-5 border border-border">
         <p className="text-sm text-text-secondary">
@@ -197,6 +192,7 @@ export default function ReimbursementContent({
                   transaction={tx}
                   showAccount={true}
                   actionButton={getActionButton(tx)}
+                  onDelete={onDelete}
                 />
               ))}
             </div>

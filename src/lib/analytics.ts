@@ -105,3 +105,13 @@ export function trackTransactionDetailView(transactionId: string) {
 export function trackTransactionDelete(transactionId: string) {
   track("transaction_delete", { transaction_id: transactionId });
 }
+
+export function trackWorkspaceSwitch(
+  toWorkspaceId: string,
+  toWorkspaceName: string
+) {
+  track("workspace_switch", {
+    to_workspace_id: toWorkspaceId,
+    to_workspace_name: toWorkspaceName,
+  });
+}

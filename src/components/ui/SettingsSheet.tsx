@@ -3,6 +3,7 @@
 import { useState } from "react";
 import BottomSheet from "./BottomSheet";
 import { cn } from "@/lib/cn";
+import { useAppData } from "@/hooks/useAppData";
 import type { Category } from "@/types/database";
 
 interface SettingsSheetProps {
@@ -20,10 +21,12 @@ export default function SettingsSheet({
   onAddCategory,
   onDeleteCategory,
 }: SettingsSheetProps) {
+  const { workspaces, currentWorkspace, switchWorkspace } = useAppData();
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
@@ -48,8 +51,74 @@ export default function SettingsSheet({
     }
   };
 
+  const handleSwitchWorkspace = async (workspaceId: string) => {
+    if (workspaceId === currentWorkspace?.id) return;
+    setSwitchingId(workspaceId);
+    try {
+      await switchWorkspace(workspaceId);
+      onClose();
+    } finally {
+      setSwitchingId(null);
+    }
+  };
+
   return (
     <BottomSheet open={open} onClose={onClose} title="Settings">
+      {/* Workspace Section */}
+      {workspaces.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-text-secondary mb-3">
+            Workspace
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {workspaces.map((ws) => {
+              const isActive = ws.id === currentWorkspace?.id;
+              const isSwitching = switchingId === ws.id;
+              return (
+                <button
+                  key={ws.id}
+                  onClick={() => handleSwitchWorkspace(ws.id)}
+                  disabled={isSwitching}
+                  className={cn(
+                    "relative flex flex-col items-start gap-1.5 rounded-2xl border-2 p-4 text-left transition-all duration-200",
+                    isActive
+                      ? "border-accent bg-accent/8"
+                      : "border-border bg-bg-secondary active:bg-bg-tertiary",
+                    isSwitching && "opacity-60"
+                  )}
+                >
+                  <span className="text-2xl">{ws.emoji}</span>
+                  <span className="text-sm font-semibold text-text-primary">
+                    {ws.name}
+                  </span>
+                  {isActive && (
+                    <div className="absolute top-3 right-3">
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="var(--accent)"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    </div>
+                  )}
+                  {isSwitching && (
+                    <span className="text-[11px] text-text-tertiary">
+                      Switching...
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Categories Section */}
       <div>
         <h3 className="text-sm font-medium text-text-secondary mb-3">

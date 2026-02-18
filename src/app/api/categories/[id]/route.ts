@@ -1,14 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAuthenticatedClient, errorResponse } from "@/lib/supabase/api-utils";
+import { getClient, errorResponse } from "@/lib/supabase/api-utils";
 
 // DELETE /api/categories/:id — delete a category
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, user, errorResponse: authError } =
-    await getAuthenticatedClient();
-  if (authError) return authError;
+  const { supabase, userId, workspaceId, errorResponse: clientError } = await getClient();
+  if (clientError) return clientError;
+  if (!workspaceId) return errorResponse("No active workspace", 400);
 
   const { id } = await params;
 
@@ -16,7 +16,8 @@ export async function DELETE(
     .from("categories")
     .delete()
     .eq("id", id)
-    .eq("user_id", user!.id);
+    .eq("user_id", userId!)
+    .eq("workspace_id", workspaceId)
 
   if (error) {
     return errorResponse(error.message, 500);

@@ -325,7 +325,7 @@ function DayGrid({
                 className={cn(
                   "relative z-10 flex h-9 w-9 items-center justify-center rounded-full transition-colors",
                   (isSelected || isRangeStart || isRangeEnd) &&
-                    "bg-accent text-white font-semibold",
+                    "bg-accent text-accent-soft font-semibold",
                   isToday && !isSelected && !isRangeStart && !isRangeEnd &&
                     "ring-2 ring-accent text-accent font-semibold",
                   !isSelected && !isRangeStart && !isRangeEnd && !isToday &&

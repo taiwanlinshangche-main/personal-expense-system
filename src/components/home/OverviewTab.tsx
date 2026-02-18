@@ -12,19 +12,26 @@ function AccountRow({
   balance,
   balanceColor,
   delay,
+  onClick,
 }: {
   icon: React.ReactNode;
   name: string;
   balance: string;
   balanceColor?: string;
   delay: number;
+  onClick?: () => void;
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="flex items-center justify-between rounded-2xl bg-bg-secondary p-4"
+      className={cn(
+        "flex items-center justify-between rounded-2xl bg-bg-secondary p-4",
+        onClick && "cursor-pointer active:bg-bg-tertiary transition-colors"
+      )}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
     >
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 rounded-xl bg-bg-tertiary flex items-center justify-center">
@@ -49,14 +56,23 @@ function SubAccountRow({
   name,
   balance,
   balanceColor,
+  onClick,
 }: {
   icon: React.ReactNode;
   name: string;
   balance: string;
   balanceColor?: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between px-3 py-2.5">
+    <div
+      className={cn(
+        "flex items-center justify-between px-3 py-2.5",
+        onClick && "cursor-pointer active:bg-bg-tertiary/60 transition-colors"
+      )}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+    >
       <div className="flex items-center gap-2.5">
         <div className="h-6 w-6 rounded-md bg-bg-tertiary flex items-center justify-center">
           {icon}
@@ -156,7 +172,22 @@ function WalletIcon() {
   );
 }
 
-export default function OverviewTab() {
+// Pick icon based on account name
+function getAccountIcon(name: string, size?: number) {
+  const lower = name.toLowerCase();
+  if (lower.includes("cash")) return <BanknoteIcon />;
+  if (lower.includes("card")) return size ? <CardIcon size={size} /> : <CardIcon />;
+  if (lower.includes("bank") || lower.includes("atm")) return size ? <BankIcon size={size} /> : <BankIcon />;
+  return <WalletIcon />;
+}
+
+const GROUP_LABELS: Record<string, string> = { sinopac: "SinoPac" };
+
+function getGroupLabel(group: string) {
+  return GROUP_LABELS[group] || group.charAt(0).toUpperCase() + group.slice(1);
+}
+
+export default function OverviewTab({ onNavigateToTrends }: { onNavigateToTrends?: (accountId: string) => void }) {
   const { accounts, transactions } = useAppData();
 
   const monthlyIncome = useMemo(() => {
@@ -187,26 +218,33 @@ export default function OverviewTab() {
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
   }, [transactions]);
 
-  const cashAccount = accounts.find((a) => a.name === "Cash");
-  const sinopacAccounts = accounts.filter((a) => a.group === "sinopac");
-  const taiwanAccount = accounts.find((a) => a.name === "Taiwan Bank");
-  const atmAccount = sinopacAccounts.find((a) => a.name.includes("ATM"));
-  const cardAccount = sinopacAccounts.find((a) => a.name.includes("Card"));
-
-  const knownIds = new Set(
-    [cashAccount?.id, atmAccount?.id, cardAccount?.id, taiwanAccount?.id].filter(
-      Boolean
-    )
-  );
-  const otherAccounts = accounts.filter((a) => !knownIds.has(a.id));
-
   const totalBalance = accounts.reduce((sum, a) => sum + a.current_balance, 0);
 
-  const cashBal = cashAccount?.current_balance ?? 0;
-  const atmBal = atmAccount?.current_balance ?? 0;
-  const cardBal = cardAccount?.current_balance ?? 0;
-  const taiwanBal = taiwanAccount?.current_balance ?? 0;
-  const sinopacGroupBalance = atmBal + cardBal;
+  // Group accounts by `group` field, preserving sort_order
+  const accountEntries = useMemo(() => {
+    const sorted = [...accounts].sort((a, b) => a.sort_order - b.sort_order);
+    const entries: Array<
+      | { type: "standalone"; account: (typeof accounts)[0] }
+      | { type: "group"; group: string; label: string; accounts: (typeof accounts) }
+    > = [];
+    const seenGroups = new Set<string>();
+
+    for (const acct of sorted) {
+      if (acct.group === null || acct.group === undefined) {
+        entries.push({ type: "standalone", account: acct });
+      } else if (!seenGroups.has(acct.group)) {
+        seenGroups.add(acct.group);
+        const groupAccounts = sorted.filter((a) => a.group === acct.group);
+        entries.push({
+          type: "group",
+          group: acct.group,
+          label: getGroupLabel(acct.group),
+          accounts: groupAccounts,
+        });
+      }
+    }
+    return entries;
+  }, [accounts]);
 
   return (
     <div className="px-5 pb-8">
@@ -280,80 +318,82 @@ export default function OverviewTab() {
         </div>
       </motion.div>
 
+      {/* Empty transactions hint */}
+      {transactions.length === 0 && (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="mt-5 text-center text-sm text-text-tertiary"
+        >
+          No transactions yet — tap + to add your first.
+        </motion.p>
+      )}
+
       {/* Accounts */}
       <section className="mt-7">
         <h3 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wider">
           Accounts
         </h3>
         <div className="mt-3 space-y-2">
-          {/* Cash — always visible */}
-          <AccountRow
-            icon={<BanknoteIcon />}
-            name="Cash"
-            balance={formatCurrency(Math.abs(cashBal))}
-            delay={0.1}
-          />
+          {accountEntries.map((entry, i) => {
+            if (entry.type === "standalone") {
+              const acct = entry.account;
+              return (
+                <AccountRow
+                  key={acct.id}
+                  icon={getAccountIcon(acct.name)}
+                  name={acct.name}
+                  balance={formatCurrency(acct.current_balance)}
+                  delay={0.1 + i * 0.04}
+                  onClick={onNavigateToTrends ? () => onNavigateToTrends(acct.id) : undefined}
+                />
+              );
+            }
 
-          {/* SinoPac Group — always visible */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.14 }}
-            className="rounded-2xl bg-bg-secondary overflow-hidden"
-          >
-            <div className="flex items-center justify-between p-4 pb-2">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-bg-tertiary flex items-center justify-center">
-                  <BankIcon />
-                </div>
-                <p className="font-medium text-text-primary text-[15px]">
-                  SinoPac
-                </p>
-              </div>
-              <p
-                className={cn(
-                  "text-[15px] font-semibold tabular-nums",
-                  sinopacGroupBalance < 0
-                    ? "text-expense"
-                    : "text-text-primary"
-                )}
+            // Grouped accounts
+            const groupBalance = entry.accounts.reduce((sum, a) => sum + a.current_balance, 0);
+            return (
+              <motion.div
+                key={entry.group}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 + i * 0.04 }}
+                className="rounded-2xl bg-bg-secondary overflow-hidden"
               >
-                {formatCurrency(sinopacGroupBalance)}
-              </p>
-            </div>
-            <div className="mx-4 mb-3 rounded-xl bg-bg-tertiary/40 divide-y divide-border/30">
-              <SubAccountRow
-                icon={<BankIcon size={14} />}
-                name="ATM"
-                balance={formatCurrency(Math.abs(atmBal))}
-              />
-              <SubAccountRow
-                icon={<CardIcon size={14} />}
-                name="Card"
-                balance={formatCurrency(cardBal)}
-                balanceColor={cardBal < 0 ? "text-expense" : undefined}
-              />
-            </div>
-          </motion.div>
-
-          {/* Taiwan Bank — always visible */}
-          <AccountRow
-            icon={<BankIcon />}
-            name="Taiwan Bank"
-            balance={formatCurrency(Math.abs(taiwanBal))}
-            delay={0.18}
-          />
-
-          {/* Other accounts (dynamic) */}
-          {otherAccounts.map((account, i) => (
-            <AccountRow
-              key={account.id}
-              icon={<WalletIcon />}
-              name={account.name}
-              balance={formatCurrency(account.current_balance)}
-              delay={0.22 + i * 0.04}
-            />
-          ))}
+                <div className="flex items-center justify-between p-4 pb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-bg-tertiary flex items-center justify-center">
+                      <BankIcon />
+                    </div>
+                    <p className="font-medium text-text-primary text-[15px]">
+                      {entry.label}
+                    </p>
+                  </div>
+                  <p
+                    className={cn(
+                      "text-[15px] font-semibold tabular-nums",
+                      groupBalance < 0 ? "text-expense" : "text-text-primary"
+                    )}
+                  >
+                    {formatCurrency(groupBalance)}
+                  </p>
+                </div>
+                <div className="mx-4 mb-3 rounded-xl bg-bg-tertiary/40 divide-y divide-border/30">
+                  {entry.accounts.map((acct) => (
+                    <SubAccountRow
+                      key={acct.id}
+                      icon={getAccountIcon(acct.name, 14)}
+                      name={acct.name.replace(new RegExp(`^${entry.label}\\s*`, "i"), "")}
+                      balance={formatCurrency(acct.current_balance)}
+                      balanceColor={acct.current_balance < 0 ? "text-expense" : undefined}
+                      onClick={onNavigateToTrends ? () => onNavigateToTrends(acct.id) : undefined}
+                    />
+                  ))}
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       </section>
     </div>

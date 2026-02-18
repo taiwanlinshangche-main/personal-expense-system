@@ -35,7 +35,14 @@ export const updateTransactionSchema = z.object({
   is_company_advance: z.boolean().optional(),
 });
 
+export const createWorkspaceSchema = z.object({
+  name: z.string().min(1, "Workspace name is required").max(50),
+  type: z.enum(["personal", "company"]),
+  emoji: z.string().max(10).default(""),
+});
+
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
+export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;

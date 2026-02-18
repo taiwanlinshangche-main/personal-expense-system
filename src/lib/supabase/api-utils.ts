@@ -1,53 +1,48 @@
 import { NextResponse } from "next/server";
-import { createClient } from "./server";
+import { createClient as createServerClient } from "@supabase/supabase-js";
+
+// Fixed user ID for single-user mode (no auth)
+const ANON_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
- * Get authenticated Supabase client + user, or return error response.
+ * Get Supabase client using service role key (bypasses RLS).
+ * Returns a fixed user ID since there is no auth.
  */
-export async function getAuthenticatedClient() {
-  if (
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  ) {
+export async function getClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceKey) {
     return {
       supabase: null,
-      user: null,
+      userId: null,
+      workspaceId: null,
       errorResponse: NextResponse.json(
-        { error: "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local" },
+        {
+          error:
+            "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local",
+        },
         { status: 503 }
       ),
     };
   }
 
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+  const supabase = createServerClient(url, serviceKey);
 
-    if (error || !user) {
-      return {
-        supabase: null,
-        user: null,
-        errorResponse: NextResponse.json(
-          { error: "Unauthorized, please log in" },
-          { status: 401 }
-        ),
-      };
-    }
+  // Look up active workspace for the user
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("user_id", ANON_USER_ID)
+    .eq("is_active", true)
+    .single();
 
-    return { supabase, user, errorResponse: null };
-  } catch (err) {
-    return {
-      supabase: null,
-      user: null,
-      errorResponse: NextResponse.json(
-        { error: err instanceof Error ? err.message : "Failed to connect to database" },
-        { status: 500 }
-      ),
-    };
-  }
+  return {
+    supabase,
+    userId: ANON_USER_ID,
+    workspaceId: (workspace?.id as string) ?? null,
+    errorResponse: null,
+  };
 }
 
 /**

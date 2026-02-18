@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
-import { getAuthenticatedClient, errorResponse } from "@/lib/supabase/api-utils";
+import { getClient, errorResponse } from "@/lib/supabase/api-utils";
 
 // GET /api/summary — home page aggregated data
 export async function GET() {
-  const { supabase, user, errorResponse: authError } =
-    await getAuthenticatedClient();
-  if (authError) return authError;
+  const { supabase, userId, workspaceId, errorResponse: clientError } = await getClient();
+  if (clientError) return clientError;
+  if (!workspaceId) return errorResponse("No active workspace", 400);
 
   // Fetch accounts
   const { data: accounts, error: accountsError } = await supabase!
     .from("accounts")
     .select("*")
-    .eq("user_id", user!.id)
+    .eq("user_id", userId!)
+    .eq("workspace_id", workspaceId)
     .eq("is_archived", false)
     .order("sort_order");
 
@@ -23,7 +24,8 @@ export async function GET() {
   const { data: transactions, error: txError } = await supabase!
     .from("transactions")
     .select("account_id, amount, date, is_company_advance, reimbursement_status")
-    .eq("user_id", user!.id);
+    .eq("user_id", userId!)
+    .eq("workspace_id", workspaceId);
 
   if (txError) {
     return errorResponse(txError.message, 500);

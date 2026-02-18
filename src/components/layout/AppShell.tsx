@@ -1,19 +1,20 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import FAB from "./FAB";
 import AddTransactionSheet from "@/components/ui/AddTransactionSheet";
 import ToastContainer, { showToast } from "@/components/ui/Toast";
 import ErrorBoundary from "@/components/ui/ErrorBoundary";
-import type { AccountWithBalance, TransactionWithAccount, Category } from "@/types/database";
+import type { AccountWithBalance, TransactionWithAccount, Category, Workspace } from "@/types/database";
 import { AppDataContext } from "@/hooks/useAppData";
 import {
   trackAddTransactionStart,
   trackAddTransactionSubmit,
   trackAddAccountSubmit,
   trackReimbursementStatusChange,
+  trackWorkspaceSwitch,
 } from "@/lib/analytics";
-import { playClick, playSuccess } from "@/lib/sfx";
+import { playClick, playSuccess, playWorkspaceSwitch } from "@/lib/sfx";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -26,21 +27,33 @@ export default function AppShell({ children }: AppShellProps) {
   const addTxStartTime = useRef<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [transactions, setTransactions] = useState<TransactionWithAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
 
+  const currentWorkspace = useMemo(
+    () => workspaces.find((w) => w.is_active) ?? null,
+    [workspaces]
+  );
+
   // Fetch data from API on mount
   const fetchData = useCallback(async (attemptSeed = true) => {
     try {
-      const [summaryRes, txRes, catRes] = await Promise.all([
+      const [summaryRes, txRes, catRes, wsRes] = await Promise.all([
         fetch("/api/summary"),
         fetch("/api/transactions?limit=500"),
         fetch("/api/categories"),
+        fetch("/api/workspaces"),
       ]);
 
       let accts: AccountWithBalance[] = [];
       let cats: Category[] = [];
+
+      if (wsRes.ok) {
+        const wsData = await wsRes.json();
+        setWorkspaces(wsData || []);
+      }
 
       if (summaryRes.ok) {
         const summary = await summaryRes.json();
@@ -59,8 +72,8 @@ export default function AppShell({ children }: AppShellProps) {
         setCategories(cats);
       }
 
-      // Auto-seed default accounts & categories on first load
-      if (attemptSeed && accts.length === 0) {
+      // Auto-seed: no accounts loaded (empty or API returned 400 for missing workspace)
+      if (attemptSeed && (accts.length === 0 || !summaryRes.ok)) {
         try {
           await fetch("/api/seed", { method: "POST" });
         } catch {
@@ -354,7 +367,48 @@ export default function AppShell({ children }: AppShellProps) {
     []
   );
 
+  const handleSwitchWorkspace = useCallback(
+    async (workspaceId: string) => {
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/activate`, {
+          method: "PATCH",
+        });
+
+        if (!res.ok) {
+          showToast({ message: "Failed to switch workspace" });
+          return;
+        }
+
+        // Close AddTransactionSheet if open (prevents stale data)
+        setShowAddTransaction(false);
+
+        // Clear cached account selection (belongs to previous workspace)
+        try { localStorage.removeItem("last_account_id"); } catch { /* SSR guard */ }
+
+        // Optimistically update local workspace state
+        setWorkspaces((prev) =>
+          prev.map((w) => ({ ...w, is_active: w.id === workspaceId }))
+        );
+
+        // SFX + analytics
+        playWorkspaceSwitch();
+        const wsName = workspaces.find((w) => w.id === workspaceId)?.name ?? "";
+        trackWorkspaceSwitch(workspaceId, wsName);
+
+        // Refetch all workspace-scoped data
+        setIsLoading(true);
+        await fetchData(false);
+      } catch {
+        showToast({ message: "Failed to switch workspace" });
+      }
+    },
+    [fetchData, workspaces]
+  );
+
   const contextValue = {
+    workspaces,
+    currentWorkspace,
+    switchWorkspace: handleSwitchWorkspace,
     accounts,
     transactions,
     categories,
