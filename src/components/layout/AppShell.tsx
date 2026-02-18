@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import FAB from "./FAB";
+import BottomNavBar from "./BottomNavBar";
 import AddTransactionSheet from "@/components/ui/AddTransactionSheet";
 import ToastContainer, { showToast } from "@/components/ui/Toast";
 import ErrorBoundary from "@/components/ui/ErrorBoundary";
 import type { AccountWithBalance, TransactionWithAccount, Category, Workspace } from "@/types/database";
-import { AppDataContext } from "@/hooks/useAppData";
+import { AppDataContext, type TabKey } from "@/hooks/useAppData";
 import {
   trackAddTransactionStart,
   trackAddTransactionSubmit,
@@ -21,6 +21,7 @@ interface AppShellProps {
 }
 
 export default function AppShell({ children }: AppShellProps) {
+  const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [txSheetResetKey, setTxSheetResetKey] = useState(0);
@@ -406,6 +407,8 @@ export default function AppShell({ children }: AppShellProps) {
   );
 
   const contextValue = {
+    activeTab,
+    setActiveTab,
     workspaces,
     currentWorkspace,
     switchWorkspace: handleSwitchWorkspace,
@@ -428,17 +431,20 @@ export default function AppShell({ children }: AppShellProps) {
   return (
     <AppDataContext.Provider value={contextValue}>
       <div className="mx-auto min-h-screen max-w-lg bg-bg-primary">
-        <main className="pb-24">
+        <main className="pb-28">
           <ErrorBoundary>{children}</ErrorBoundary>
         </main>
 
-        <FAB
-          onClick={() => {
+        <BottomNavBar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onFabClick={() => {
             addTxStartTime.current = Date.now();
             trackAddTransactionStart("current");
             setTxSheetResetKey((k) => k + 1);
             setShowAddTransaction(true);
           }}
+          pendingCount={pendingCount}
         />
 
         <AddTransactionSheet

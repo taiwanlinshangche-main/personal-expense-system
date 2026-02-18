@@ -3,7 +3,11 @@
 import { createContext, useContext } from "react";
 import type { AccountWithBalance, TransactionWithAccount, Category, Workspace } from "@/types/database";
 
+export type TabKey = "overview" | "expense" | "insight" | "claims";
+
 interface AppDataContextType {
+  activeTab: TabKey;
+  setActiveTab: (tab: TabKey) => void;
   workspaces: Workspace[];
   currentWorkspace: Workspace | null;
   switchWorkspace: (workspaceId: string) => Promise<void>;

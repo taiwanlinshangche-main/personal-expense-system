@@ -137,6 +137,8 @@
 /* ===== Base Styles ===== */
 
 body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -210,6 +212,28 @@ body {
 .overlay-exit-active {
   opacity: 0;
   transition: opacity 200ms ease;
+}
+
+/* ===== Bottom Nav FAB Animations ===== */
+
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 15px 2px rgba(56, 189, 248, 0.4), 0 0 30px 4px rgba(14, 165, 233, 0.2); }
+  50% { box-shadow: 0 0 20px 4px rgba(56, 189, 248, 0.6), 0 0 40px 8px rgba(14, 165, 233, 0.3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab-gradient {
+    animation: none !important;
+  }
+  .fab-glow {
+    animation: none !important;
+  }
 }
 
 /* ===== Date Input Styling ===== */

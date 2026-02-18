@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn } from "@/lib/cn";
 import OverviewTab from "./OverviewTab";
 import ExpenseTab from "./ExpenseTab";
 import InsightTab from "./InsightTab";
@@ -11,31 +10,21 @@ import SearchOverlay from "./SearchOverlay";
 import SettingsSheet from "@/components/ui/SettingsSheet";
 import { useAppData } from "@/hooks/useAppData";
 
-type TabKey = "overview" | "expense" | "insight" | "claims";
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "overview", label: "Overview" },
-  { key: "expense", label: "Expenses" },
-  { key: "insight", label: "Trends" },
-  { key: "claims", label: "Claims" },
-];
-
 export default function HomeContent() {
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [showSearch, setShowSearch] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [trendsAccountId, setTrendsAccountId] = useState<string | null>(null);
-  const { categories, onAddCategory, onDeleteCategory, transactions, accounts, isLoading, onStatusChange, onDeleteTransaction, currentWorkspace } = useAppData();
+  const { activeTab, setActiveTab, categories, onAddCategory, onDeleteCategory, transactions, accounts, isLoading, onStatusChange, onDeleteTransaction, currentWorkspace } = useAppData();
 
   const navigateToTrends = useCallback((accountId: string) => {
     setTrendsAccountId(accountId);
     setActiveTab("insight");
-  }, []);
+  }, [setActiveTab]);
 
   return (
     <div className="min-h-screen bg-bg-primary">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 pt-4 pb-1">
+      <header className="flex items-center justify-between px-5 pb-1" style={{ paddingTop: "max(16px, env(safe-area-inset-top, 16px))" }}>
         <div className="flex items-center gap-3">
           {/* Avatar — opens Settings */}
           <button
@@ -54,9 +43,8 @@ export default function HomeContent() {
           {currentWorkspace && (
             <button
               onClick={() => setShowSettings(true)}
-              className="flex items-center gap-1.5 active:opacity-70 transition-opacity"
+              className="active:opacity-70 transition-opacity"
             >
-              <span className="text-base">{currentWorkspace.emoji}</span>
               <span className="text-sm font-medium text-text-primary">{currentWorkspace.name}</span>
             </button>
           )}
@@ -77,26 +65,8 @@ export default function HomeContent() {
         </div>
       </header>
 
-      {/* Tab Bar */}
-      <div className="flex items-center gap-1.5 px-5 mt-4">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              "relative px-5 py-2 rounded-full text-[14px] font-medium transition-all duration-200",
-              activeTab === tab.key
-                ? "bg-text-primary text-bg-primary"
-                : "text-text-secondary active:bg-bg-tertiary"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       {/* Tab Content */}
-      <div className="mt-5">
+      <div className="mt-4">
         <AnimatePresence mode="wait">
           {activeTab === "overview" && (
             <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
