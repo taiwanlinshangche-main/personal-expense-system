@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { AnimatePresence } from "motion/react";
 import BottomSheet from "./BottomSheet";
 import { cn } from "@/lib/cn";
 import { useAppData } from "@/hooks/useAppData";
+import SnakeGame from "@/components/game/SnakeGame";
 import type { Category } from "@/types/database";
 
 interface SettingsSheetProps {
@@ -27,6 +29,7 @@ export default function SettingsSheet({
   const [isAdding, setIsAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [showGame, setShowGame] = useState(false);
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
@@ -215,6 +218,27 @@ export default function SettingsSheet({
           </button>
         </div>
       </div>
+
+      {/* Easter egg */}
+      <div className="mt-6 flex justify-center">
+        <button
+          onClick={() => { onClose(); setTimeout(() => setShowGame(true), 300); }}
+          className="p-2 rounded-full text-text-tertiary/30 active:text-text-tertiary transition-colors"
+          aria-label="Game"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="6" width="20" height="12" rx="2" />
+            <circle cx="9" cy="12" r="1.5" fill="currentColor" />
+            <circle cx="15" cy="10" r="1" fill="currentColor" />
+            <circle cx="17" cy="12" r="1" fill="currentColor" />
+            <circle cx="15" cy="14" r="1" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showGame && <SnakeGame onClose={() => setShowGame(false)} />}
+      </AnimatePresence>
     </BottomSheet>
   );
 }
