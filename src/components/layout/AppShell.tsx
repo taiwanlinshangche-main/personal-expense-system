@@ -205,6 +205,11 @@ export default function AppShell({ children }: AppShellProps) {
         setNewTxId(newTx.id);
         setActiveTab("expense");
         showToast({ message: "Transaction added" });
+
+        // Scroll to top so the new transaction is visible
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
       } catch (err) {
         showToast({ message: err instanceof Error ? err.message : "Failed to add transaction" });
       } finally {
